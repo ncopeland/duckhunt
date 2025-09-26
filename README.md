@@ -1,25 +1,35 @@
-# Duck Hunt
+# Duck Hunt IRC Bot
 
-A modern implementation of the classic Duck Hunt game.
+An IRC bot that hosts Duck Hunt games in IRC channels. Players can shoot ducks by guessing their position!
 
-## Getting Started
+## How to Play
 
-1. Install dependencies:
+1. Join the IRC channel where the bot is running
+2. Type `!duckhunt` to start a new game
+3. A duck will fly across 10 positions (1-10)
+4. Type `shoot <number>` to shoot at that position
+5. Hit the duck to score points!
+6. Type `!score` to see current scores
+
+## Running the Bot
+
+1. Edit the configuration in `duckhunt_bot.py`:
+   - `SERVER`: IRC server (default: irc.libera.chat)
+   - `PORT`: IRC port (default: 6667)
+   - `CHANNEL`: Channel to join (default: #duckhunt)
+   - `NICKNAME`: Bot nickname
+
+2. Run the bot:
    ```bash
-   npm install
+   python3 duckhunt_bot.py
    ```
 
-2. Run the game:
-   ```bash
-   npm start
-   ```
+## Features
 
-## Development
-
-For development with auto-restart:
-```bash
-npm run dev
-```
+- Simple IRC protocol implementation
+- Duck Hunt game mechanics
+- Score tracking
+- No external dependencies (pure Python)
 
 ## License
 
