@@ -1,0 +1,16 @@
+{
+  "name": "duckhunt",
+  "version": "1.0.0",
+  "description": "A modern duck hunt game",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": ["game", "duckhunt", "javascript"],
+  "author": "boliver",
+  "license": "MIT",
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
