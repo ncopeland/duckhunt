@@ -11,3 +11,7 @@ venv.bak/
 .env
 .DS_Store
 *.log
+duckhunt_ai_instructions.md
+message_classification.csv
+duckhunt.data
+duckhunt.conf
