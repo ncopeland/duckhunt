@@ -765,16 +765,18 @@ shop_mechanical_duck = 50
             channel_stats['ducks_shot'] += 1
             channel_stats['last_duck_time'] = time.time()  # Record when duck was shot
             if duck_killed:
+                # Base XP for kill (golden vs regular)
                 if target_duck['golden']:
                     channel_stats['golden_ducks'] += 1
-                    xp_gain = 50
+                    base_xp = 50
                 else:
                     base_xp = int(self.config.get('default_xp', 10))
-                    # Clover bonus per duck while active
-                    if channel_stats.get('clover_until', 0) > time.time():
-                        xp_gain = base_xp + int(channel_stats.get('clover_bonus', 0))
-                    else:
-                        xp_gain = base_xp
+
+                # Apply clover bonus if active (affects both golden and regular)
+                if channel_stats.get('clover_until', 0) > time.time():
+                    xp_gain = base_xp + int(channel_stats.get('clover_bonus', 0))
+                else:
+                    xp_gain = base_xp
             else:
                 xp_gain = 0
             
@@ -872,7 +874,13 @@ shop_mechanical_duck = 50
         
         # Award XP for befriending when completed
         if bef_killed:
-            xp_gained = 50 if duck['golden'] else 10
+            # Base XP for befriending (golden vs regular)
+            base_xp = 50 if duck['golden'] else int(self.config.get('default_xp', 10))
+            # Four-leaf clover bonus if active
+            if channel_stats.get('clover_until', 0) > time.time():
+                xp_gained = base_xp + int(channel_stats.get('clover_bonus', 0))
+            else:
+                xp_gained = base_xp
             channel_stats['xp'] += xp_gained
             channel_stats['befriended_ducks'] += 1
             response = f"FRIEND     The "
@@ -1030,6 +1038,18 @@ shop_mechanical_duck = 50
                     else:
                         channel_stats['sight_next_shot'] = True
                         self.send_message(channel, self.pm(user, "You purchased a sight. Your next shot will be more accurate."))
+                elif item_id == 10:  # Four-leaf clover: +N XP per duck for 24h; single active at a time
+                    now = time.time()
+                    duration = 24 * 3600
+                    if channel_stats.get('clover_until', 0) > now:
+                        # Already active; refund
+                        self.send_notice(user, "Four-leaf clover already active. Wait until it expires to buy again.")
+                        channel_stats['xp'] += item['cost']
+                    else:
+                        bonus = random.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+                        channel_stats['clover_bonus'] = bonus
+                        channel_stats['clover_until'] = now + duration
+                        self.send_message(channel, self.pm(user, f"Four-leaf clover activated for 24h. +{bonus} XP per duck."))
                 elif item_id == 8:  # Infrared detector: 24h trigger lock window when no duck, limited uses
                     now = time.time()
                     duration = 24 * 3600
@@ -1604,11 +1624,17 @@ shop_mechanical_duck = 50
             channel_stats['xp'] += xp
             say(f"By searching the bushes, you find a hunting magazine! [+{xp} xp]")
         elif choice == "clover":
-            options = [1, 3, 5, 7, 8, 9, 10]
-            bonus = random.choice(options)
-            channel_stats['clover_bonus'] = bonus
-            channel_stats['clover_until'] = max(channel_stats.get('clover_until', 0), now + day)
-            say(f"By searching the bushes, you find a four-leaf clover! +{bonus} XP per duck for 24h.")
+            # If already active, convert to XP equal to shop price
+            if channel_stats.get('clover_until', 0) > now:
+                clover_cost = int(self.config.get('shop_four_leaf_clover', 13))
+                channel_stats['xp'] += clover_cost
+                say(f"You find a four-leaf clover, but you already have its luck active. [+{clover_cost} xp]")
+            else:
+                options = [1, 3, 5, 7, 8, 9, 10]
+                bonus = random.choice(options)
+                channel_stats['clover_bonus'] = bonus
+                channel_stats['clover_until'] = max(channel_stats.get('clover_until', 0), now + day)
+                say(f"By searching the bushes, you find a four-leaf clover! +{bonus} XP per duck for 24h.")
         else:  # junk
             junk_items = [
                 "discarded tire", "old shoe", "creepy crawly", "pile of rubbish", "cigarette butt",
