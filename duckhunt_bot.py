@@ -840,7 +840,11 @@ shop_mechanical_duck = 50
             # self.send_message(channel, f"[DEBUG] Bef check - channel in ducks: {norm_channel in self.active_ducks}")
             if norm_channel not in self.active_ducks:
                 self.log_action(f"No ducks to befriend in {channel} - active_ducks keys: {list(self.active_ducks.keys())}")
-                self.send_message(channel, "There are no ducks to befriend.")
+                # Apply small penalty for befriending when no ducks are present
+                penalty = channel_stats.get('miss_penalty', -1)
+                channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
+                self.send_message(channel, self.pm(user, f"There are no ducks to befriend. [{penalty} XP]"))
+                self.save_player_data()
                 return
             
             # Get the active duck
