@@ -452,6 +452,8 @@ shop_mechanical_duck = 50
             stats['clover_bonus'] = 0
         if 'sight_next_shot' not in stats:
             stats['sight_next_shot'] = False
+        if 'level' not in stats:
+            stats['level'] = min(50, (stats.get('xp', 0) // 100) + 1)
         # Dynamic properties will be (re)computed each fetch
         self.apply_level_bonuses(stats)
         # Initialize ammo/magazines to level-based capacities for newly created stats
@@ -539,6 +541,23 @@ shop_mechanical_duck = 50
             'wild_penalty': -abs(wildpen),
             'accident_penalty': -abs(accpen),
         }
+
+    def check_level_change(self, user: str, channel: str, stats: dict, prev_xp: int) -> None:
+        """Announce promotion/demotion when XP crosses thresholds."""
+        prev_level = min(50, (prev_xp // 100) + 1)
+        new_level = min(50, (stats.get('xp', 0) // 100) + 1)
+        if new_level == prev_level:
+            return
+        titles = [
+            "tourist", "noob", "duck hater", "duck hunter", "member of the Comitee Against Ducks",
+            "duck pest", "duck hassler", "duck killer", "duck demolisher", "duck disassembler"
+        ]
+        title = titles[min(new_level-1, len(titles)-1)] if new_level > 0 else "unknown"
+        if new_level > prev_level:
+            self.send_message(channel, self.pm(user, f"PROMOTION     You are promoted to level {new_level} ({title})."))
+        else:
+            self.send_message(channel, self.pm(user, f"DEMOTION     You are demoted to level {new_level} ({title})."))
+        stats['level'] = new_level
 
     def apply_level_bonuses(self, channel_stats):
         props = self.get_level_properties(channel_stats['xp'])
@@ -726,6 +745,7 @@ shop_mechanical_duck = 50
                         wild_pen = int(wild_pen / 2)
                 total_pen = miss_pen + wild_pen
                 channel_stats['confiscated'] = True
+                prev_xp = channel_stats['xp']
                 channel_stats['xp'] = max(0, channel_stats['xp'] + total_pen)
                 self.send_message(channel, self.pm(user, f"Luckily you missed, but what did you aim at ? There is no duck in the area...   [missed: {miss_pen} xp] [wild fire: {wild_pen} xp]   [GUN CONFISCATED: wild fire]"))
                 # Accidental shooting (wild fire): 50% chance to hit a random player
@@ -758,6 +778,7 @@ shop_mechanical_duck = 50
                         self.send_message(channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ''}"))
                     else:
                         self.send_message(channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ''}"))
+                self.check_level_change(user, channel, channel_stats, prev_xp)
                 self.save_player_data()
                 return
             
@@ -806,6 +827,7 @@ shop_mechanical_duck = 50
                 # Liability insurance halves penalties
                 if channel_stats.get('liability_insurance_until', 0) > time.time() and penalty < 0:
                     penalty = int(penalty / 2)
+                prev_xp = channel_stats['xp']
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
                 self.send_message(channel, self.pm(user, f"*BANG*     You missed. [{penalty} xp]"))
                 # Ricochet accident: 20% chance to hit a random player
@@ -840,6 +862,7 @@ shop_mechanical_duck = 50
                         self.send_message(channel, self.pm(user, f"ACCIDENT     Your bullet ricochets into {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ' [GUN CONFISCATED: accident]'}"))
                     else:
                         self.send_message(channel, self.pm(user, f"ACCIDENT     Your bullet ricochets into {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ' [GUN CONFISCATED: accident]'}"))
+                self.check_level_change(user, channel, channel_stats, prev_xp)
                 self.save_player_data()
                 return
 
@@ -883,6 +906,7 @@ shop_mechanical_duck = 50
             else:
                 xp_gain = 0
             
+            prev_xp = channel_stats['xp']
             channel_stats['xp'] += xp_gain
             channel_stats['total_reaction_time'] += reaction_time
             
@@ -919,6 +943,9 @@ shop_mechanical_duck = 50
                     self.send_message(channel, self.pm(user, f"*BANG*     The golden duck survived ! Try again.   \\_O<  [life -{damage}]"))
                 else:
                     self.send_message(channel, self.pm(user, f"*BANG*     You hit the duck! Remaining health: {remaining}."))
+        # Announce promotion/demotion if level changed (any XP change path)
+        if xp_gain != 0:
+            self.check_level_change(user, channel, channel_stats, prev_xp)
         
         # Random weighted loot drop (10% chance) on kill only
         if duck_killed and random.random() < 0.10:
@@ -998,6 +1025,7 @@ shop_mechanical_duck = 50
                 xp_gained = base_xp + int(channel_stats.get('clover_bonus', 0))
             else:
                 xp_gained = base_xp
+            prev_xp = channel_stats['xp']
             channel_stats['xp'] += xp_gained
             channel_stats['befriended_ducks'] += 1
             response = f"FRIEND     The "
@@ -1008,6 +1036,7 @@ shop_mechanical_duck = 50
             response += f" was befriended!   \\_0< QUAACK!   [BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}] [+{xp_gained} xp]"
             self.send_message(channel, self.pm(user, response))
             self.log_action(f"{user} befriended a {'golden ' if duck['golden'] else ''}duck in {channel}")
+            self.check_level_change(user, channel, channel_stats, prev_xp)
         else:
             remaining = max(0, duck['health'])
             self.send_message(channel, self.pm(user, f"FRIEND     You comfort the duck. Remaining friendliness needed: {remaining}."))
