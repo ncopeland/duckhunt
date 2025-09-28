@@ -53,7 +53,7 @@ class DuckHuntBot:
         # Shop items (prices loaded from config)
         self.shop_items = {
             1: {"name": "Extra bullet", "cost": int(self.config.get('shop_extra_bullet', 7)), "description": "Adds one bullet to your gun"},
-            2: {"name": "Extra magazine", "cost": int(self.config.get('shop_extra_magazine', 20)), "description": "Adds one magazine to your stock"},
+            2: {"name": "Refill magazine", "cost": int(self.config.get('shop_extra_magazine', 20)), "description": "Adds one spare magazine to your stock"},
             3: {"name": "AP ammo", "cost": int(self.config.get('shop_ap_ammo', 15)), "description": "Armor-piercing ammunition"},
             4: {"name": "Explosive ammo", "cost": int(self.config.get('shop_explosive_ammo', 25)), "description": "Explosive ammunition (damage x3)"},
             5: {"name": "Repurchase confiscated gun", "cost": int(self.config.get('shop_repurchase_gun', 40)), "description": "Buy back your confiscated weapon"},
