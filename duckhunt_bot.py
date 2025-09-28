@@ -74,7 +74,7 @@ class DuckHuntBot:
             20: {"name": "Piece of bread", "cost": int(self.config.get('shop_piece_of_bread', 50)), "description": "Lures ducks"},
             21: {"name": "Ducks detector", "cost": int(self.config.get('shop_ducks_detector', 50)), "description": "Warns of next duck spawn"},
             22: {"name": "Upgrade Magazine", "cost": 200, "description": "Increase ammo per magazine (up to 5 levels)"},
-            23: {"name": "Extra Magazine Capacity", "cost": 200, "description": "Increase max carried magazines (up to 5 levels)"}
+            23: {"name": "Extra Magazine", "cost": 200, "description": "Increase max carried magazines (up to 5 levels)"}
         }
         
     def load_config(self, config_file):
@@ -1311,7 +1311,7 @@ shop_ducks_detector = 50
                     current_until = channel_stats.get('ducks_detector_until', 0)
                     channel_stats['ducks_detector_until'] = max(current_until, now + duration)
                     self.send_message(channel, self.pm(user, "Ducks detector activated for 24h. You'll get a 60s pre-spawn notice."))
-                elif item_id == 23:  # Extra Magazine Capacity: increase magazines_max (level 1-5), cost scales
+                elif item_id == 23:  # Extra Magazine: increase magazines_max (level 1-5), cost scales
                     current_level = channel_stats.get('mag_capacity_level', 0)
                     if current_level >= 5:
                         self.send_message(channel, self.pm(user, "You already carry the maximum extra magazines."))
