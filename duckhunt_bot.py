@@ -590,7 +590,12 @@ shop_mechanical_duck = 50
         now = time.time()
         self.duck_spawn_time = now + spawn_delay
         # Choose the channel now so we can pre-notify
-        channels = [ch.strip() for ch in self.config.get('channel', '#default').split(',') if ch.strip()]
+        # Prefer currently joined channels; fallback to configured list
+        joined_channels = list(self.channels.keys()) if getattr(self, 'channels', None) else []
+        if joined_channels:
+            channels = joined_channels
+        else:
+            channels = [ch.strip() for ch in self.config.get('channel', '#default').split(',') if ch.strip()]
         self.next_spawn_channel = random.choice(channels) if channels else None
         # 60s head start pre-notice
         self.pre_spawn_notice_time = max(now, self.duck_spawn_time - 60)
