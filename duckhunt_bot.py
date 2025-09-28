@@ -476,6 +476,11 @@ shop_ducks_detector = 50
             channel_stats['sight_next_shot'] = False
         if mode == 'bef' and channel_stats.get('bread_uses', 0) > 0:
             base += 0.10  # bread improves befriending effectiveness
+        # Mirror (dazzle) reduces accuracy unless sunglasses are active
+        now = time.time()
+        if channel_stats.get('mirror_until', 0) > now and not (channel_stats.get('sunglasses_until', 0) > now):
+            # Reduce current accuracy by 25%
+            base = base * 0.75
         return max(0.10, min(0.99, base))
 
     def get_level_properties(self, xp: int) -> dict:
@@ -1135,17 +1140,17 @@ shop_ducks_detector = 50
                     clip_size = channel_stats.get('clip_size', 10)
                     if channel_stats['ammo'] < clip_size:
                         channel_stats['ammo'] = min(clip_size, channel_stats['ammo'] + 1)
-                        self.send_message(channel, f"You just added an extra bullet in your gun in exchange for {item['cost']} xp points. | Ammo: {channel_stats['ammo']}/{clip_size}")
+                        self.send_message(channel, self.pm(user, f"You just added an extra bullet in your gun in exchange for {item['cost']} xp points. | Ammo: {channel_stats['ammo']}/{clip_size}"))
                     else:
-                        self.send_message(channel, f"Your magazine is already full.")
+                        self.send_message(channel, self.pm(user, f"Your magazine is already full."))
                         channel_stats['xp'] += item['cost']  # Refund XP
                 elif item_id == 2:  # Extra magazine
                     mags_max = channel_stats.get('magazines_max', 2)
                     if channel_stats['magazines'] < mags_max:
                         channel_stats['magazines'] = min(mags_max, channel_stats['magazines'] + 1)
-                        self.send_message(channel, f"You just added an extra magazine in exchange for {item['cost']} xp points. | Magazines: {channel_stats['magazines']}/{mags_max}")
+                        self.send_message(channel, self.pm(user, f"You just added an extra magazine in exchange for {item['cost']} xp points. | Magazines: {channel_stats['magazines']}/{mags_max}"))
                     else:
-                        self.send_message(channel, f"You already have the maximum magazines.")
+                        self.send_message(channel, self.pm(user, f"You already have the maximum magazines."))
                         channel_stats['xp'] += item['cost']  # Refund XP
                 elif item_id == 3:  # AP ammo: next 20 shots do +1 dmg vs golden (i.e., 2 total)
                     ap = channel_stats.get('ap_shots', 0)
@@ -1158,9 +1163,9 @@ shop_ducks_detector = 50
                         channel_stats['explosive_shots'] = 0
                         channel_stats['ap_shots'] = 20
                         if switched:
-                            self.send_message(channel, "You switched to AP ammo. Next 20 shots are AP.")
+                            self.send_message(channel, self.pm(user, "You switched to AP ammo. Next 20 shots are AP."))
                         else:
-                            self.send_message(channel, "You purchased AP ammo. Next 20 shots deal extra damage to golden ducks.")
+                            self.send_message(channel, self.pm(user, "You purchased AP ammo. Next 20 shots deal extra damage to golden ducks."))
                 elif item_id == 4:  # Explosive ammo: next 20 shots do +1 dmg vs golden and boost accuracy
                     ap = channel_stats.get('ap_shots', 0)
                     ex = channel_stats.get('explosive_shots', 0)
@@ -1172,9 +1177,9 @@ shop_ducks_detector = 50
                         channel_stats['ap_shots'] = 0
                         channel_stats['explosive_shots'] = 20
                         if switched:
-                            self.send_message(channel, "You switched to explosive ammo. Next 20 shots are explosive.")
+                            self.send_message(channel, self.pm(user, "You switched to explosive ammo. Next 20 shots are explosive."))
                         else:
-                            self.send_message(channel, "You purchased explosive ammo. Next 20 shots deal extra damage to golden ducks.")
+                            self.send_message(channel, self.pm(user, "You purchased explosive ammo. Next 20 shots deal extra damage to golden ducks."))
                 elif item_id == 7:  # Sight: next shot accuracy boost; cannot stack
                     if channel_stats.get('sight_next_shot', False):
                         self.send_notice(user, "Sight already mounted for your next shot. Use it before buying more.")
@@ -1196,15 +1201,20 @@ shop_ducks_detector = 50
                     channel_stats['jammed'] = False
                     channel_stats['brush_until'] = max(channel_stats.get('brush_until', 0), time.time() + 24*3600)
                     self.send_message(channel, self.pm(user, "You clean your gun. It feels smoother for 24h."))
-                elif item_id == 14:  # Mirror: reflect accidents back to shooter unless they wear sunglasses (target required)
+                elif item_id == 14:  # Mirror: apply dazzle debuff to target unless countered by sunglasses (target required)
                     if len(args) < 2:
                         self.send_notice(user, "Usage: !shop 14 <nick>")
                         channel_stats['xp'] += item['cost']
                     else:
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel)
-                        tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
-                        self.send_message(channel, self.pm(user, f"You hand a mirror to {target}. It will reflect glare for 24h."))
+                        # If target has sunglasses active, mirror is countered
+                        if tstats.get('sunglasses_until', 0) > time.time():
+                            self.send_message(channel, self.pm(user, f"{target} is wearing sunglasses. The mirror has no effect."))
+                            channel_stats['xp'] += item['cost']
+                        else:
+                            tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
+                            self.send_message(channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced."))
                 elif item_id == 15:  # Handful of sand: victim reliability worse for 24h (target required)
                     if len(args) < 2:
                         self.send_notice(user, "Usage: !shop 15 <nick>")
@@ -1283,7 +1293,7 @@ shop_ducks_detector = 50
                         channel_stats['xp'] += item['cost']
                     else:
                         channel_stats['bread_uses'] = 20
-                        self.send_message(channel, f"You purchased bread. Next 20 befriends are more effective.")
+                        self.send_message(channel, self.pm(user, f"You purchased bread. Next 20 befriends are more effective."))
                 elif item_id == 5:  # Repurchase confiscated gun
                     if channel_stats['confiscated']:
                         channel_stats['confiscated'] = False
@@ -1291,7 +1301,7 @@ shop_ducks_detector = 50
                         mags_max = channel_stats.get('magazines_max', 2)
                         channel_stats['ammo'] = clip_size
                         channel_stats['magazines'] = mags_max
-                        self.send_message(channel, f"You repurchased your confiscated gun in exchange for {item['cost']} xp points. | Ammo: {clip_size}/{clip_size} | Magazines: {mags_max}/{mags_max}")
+                        self.send_message(channel, self.pm(user, f"You repurchased your confiscated gun in exchange for {item['cost']} xp points. | Ammo: {clip_size}/{clip_size} | Magazines: {mags_max}/{mags_max}"))
                     else:
                         self.send_message(channel, f"Your gun is not confiscated.")
                         channel_stats['xp'] += item['cost']  # Refund XP
@@ -1315,7 +1325,7 @@ shop_ducks_detector = 50
                         item['cost'] = min(1000, item['cost'] + 200)
                 else:
                     # For other items, just show generic message
-                    self.send_message(channel, f"You purchased {item['name']} in exchange for {item['cost']} xp points.")
+                    self.send_message(channel, self.pm(user, f"You purchased {item['name']} in exchange for {item['cost']} xp points."))
                 
                 self.save_player_data()
                 
