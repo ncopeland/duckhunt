@@ -716,9 +716,14 @@ shop_mechanical_duck = 50
                     self.send_message(channel, self.pm(user, f"*CLICK*     Trigger locked. [{remaining_uses} remaining]"))
                     self.save_player_data()
                     return
-                # Otherwise apply usual penalties
+                # Otherwise apply classic-aligned penalties with liability reduction
                 miss_pen = channel_stats.get('miss_penalty', -1)
-                wild_pen = channel_stats.get('wild_penalty', -2)
+                wild_pen = -2
+                if channel_stats.get('liability_insurance_until', 0) > now:
+                    if miss_pen < 0:
+                        miss_pen = int(miss_pen / 2)
+                    if wild_pen < 0:
+                        wild_pen = int(wild_pen / 2)
                 total_pen = miss_pen + wild_pen
                 channel_stats['confiscated'] = True
                 channel_stats['xp'] = max(0, channel_stats['xp'] + total_pen)
