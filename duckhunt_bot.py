@@ -728,6 +728,36 @@ shop_mechanical_duck = 50
                 channel_stats['confiscated'] = True
                 channel_stats['xp'] = max(0, channel_stats['xp'] + total_pen)
                 self.send_message(channel, self.pm(user, f"Luckily you missed, but what did you aim at ? There is no duck in the area...   [missed: {miss_pen} xp] [wild fire: {wild_pen} xp]   [GUN CONFISCATED: wild fire]"))
+                # Accidental shooting (wild fire): 50% chance to hit a random player
+                victim = None
+                if channel in self.channels and self.channels[channel]:
+                    candidates = [u for u in list(self.channels[channel]) if u != user]
+                    try:
+                        bot_nick = self.config['bot_nick'].split(',')[0]
+                        candidates = [u for u in candidates if u != bot_nick]
+                    except Exception:
+                        pass
+                    if candidates and random.random() < 0.50:
+                        victim = random.choice(candidates)
+                if victim:
+                    acc_pen = channel_stats.get('accident_penalty', -4)
+                    if channel_stats.get('liability_insurance_until', 0) > now and acc_pen < 0:
+                        acc_pen = int(acc_pen / 2)
+                    channel_stats['accidents'] += 1
+                    channel_stats['xp'] = max(0, channel_stats['xp'] + acc_pen)
+                    insured = channel_stats.get('life_insurance_until', 0) > now
+                    if insured:
+                        channel_stats['confiscated'] = False
+                    # Mirror on victim can add extra penalty if shooter lacks sunglasses
+                    vstats = self.get_channel_stats(victim, channel)
+                    if vstats.get('mirror_until', 0) > now and not (channel_stats.get('sunglasses_until', 0) > now):
+                        extra = -1
+                        if channel_stats.get('liability_insurance_until', 0) > now:
+                            extra = int(extra / 2)
+                        channel_stats['xp'] = max(0, channel_stats['xp'] + extra)
+                        self.send_message(channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ''}"))
+                    else:
+                        self.send_message(channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ''}"))
                 self.save_player_data()
                 return
             
@@ -778,6 +808,38 @@ shop_mechanical_duck = 50
                     penalty = int(penalty / 2)
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
                 self.send_message(channel, self.pm(user, f"*BANG*     You missed. [{penalty} xp]"))
+                # Ricochet accident: 20% chance to hit a random player
+                victim = None
+                if channel in self.channels and self.channels[channel]:
+                    candidates = [u for u in list(self.channels[channel]) if u != user]
+                    try:
+                        bot_nick = self.config['bot_nick'].split(',')[0]
+                        candidates = [u for u in candidates if u != bot_nick]
+                    except Exception:
+                        pass
+                    if candidates and random.random() < 0.20:
+                        victim = random.choice(candidates)
+                if victim:
+                    now2 = time.time()
+                    acc_pen = channel_stats.get('accident_penalty', -4)
+                    if channel_stats.get('liability_insurance_until', 0) > now2 and acc_pen < 0:
+                        acc_pen = int(acc_pen / 2)
+                    channel_stats['accidents'] += 1
+                    channel_stats['xp'] = max(0, channel_stats['xp'] + acc_pen)
+                    insured = channel_stats.get('life_insurance_until', 0) > now2
+                    if insured:
+                        channel_stats['confiscated'] = False
+                    else:
+                        channel_stats['confiscated'] = True
+                    vstats = self.get_channel_stats(victim, channel)
+                    if vstats.get('mirror_until', 0) > now2 and not (channel_stats.get('sunglasses_until', 0) > now2):
+                        extra = -1
+                        if channel_stats.get('liability_insurance_until', 0) > now2:
+                            extra = int(extra / 2)
+                        channel_stats['xp'] = max(0, channel_stats['xp'] + extra)
+                        self.send_message(channel, self.pm(user, f"ACCIDENT     Your bullet ricochets into {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ' [GUN CONFISCATED: accident]'}"))
+                    else:
+                        self.send_message(channel, self.pm(user, f"ACCIDENT     Your bullet ricochets into {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ' [GUN CONFISCATED: accident]'}"))
                 self.save_player_data()
                 return
 
