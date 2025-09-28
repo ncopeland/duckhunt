@@ -568,8 +568,14 @@ shop_ducks_detector = 50
 
     def apply_level_bonuses(self, channel_stats):
         props = self.get_level_properties(channel_stats['xp'])
-        channel_stats['clip_size'] = props['clip_size']
-        channel_stats['magazines_max'] = props['magazines_max']
+        # Base capacities from level table
+        base_clip = props['clip_size']
+        base_mags = props['magazines_max']
+        # Apply player upgrades if present
+        upgraded_clip = base_clip + int(channel_stats.get('mag_upgrade_level', 0))
+        upgraded_mags = base_mags + int(channel_stats.get('mag_capacity_level', 0))
+        channel_stats['clip_size'] = upgraded_clip
+        channel_stats['magazines_max'] = upgraded_mags
         channel_stats['miss_penalty'] = props['miss_penalty']
         channel_stats['wild_penalty'] = props['wild_penalty']
         channel_stats['accident_penalty'] = props['accident_penalty']
@@ -1271,15 +1277,8 @@ shop_ducks_detector = 50
                 elif item_id == 19:  # Liability insurance: reduce penalties by 50% for 24h
                     channel_stats['liability_insurance_until'] = max(channel_stats.get('liability_insurance_until', 0), time.time() + 24*3600)
                     self.send_message(channel, self.pm(user, "You purchase liability insurance. Penalties reduced by 50% for 24h."))
-                elif item_id == 20:  # Upgrade Magazine: increase clip size (legacy path, keep as alias to 22)
-                    # Treat as 22 to avoid discrepancies
+                elif item_id == 22:  # Upgrade Magazine: increase clip size (level 1-5), dynamic cost per level
                     current_level = channel_stats.get('mag_upgrade_level', 0)
-                    alias_cost = min(1000, 200 * (current_level + 1))
-                    if cost != alias_cost:
-                        # Adjust xp delta if earlier deduction used different cost
-                        delta = cost - alias_cost
-                        channel_stats['xp'] = max(0, channel_stats['xp'] + delta)
-                        cost = alias_cost
                     if current_level >= 5:
                         self.send_message(channel, self.pm(user, "Your magazine is already fully upgraded."))
                         channel_stats['xp'] += cost
@@ -1326,7 +1325,7 @@ shop_ducks_detector = 50
                         channel_stats['infrared_uses'] = 6
                         hours = duration // 3600
                         self.send_message(channel, self.pm(user, f"Infrared detector enabled for {hours}h00m. Trigger lock has 6 uses."))
-                elif item_id == 21:  # Bread: next 20 befriends count double vs golden
+                elif item_id == 20:  # Bread: next 20 befriends count double vs golden
                     if channel_stats.get('bread_uses', 0) > 0:
                         self.send_notice(user, "Bread already active. Use it up before buying more.")
                         channel_stats['xp'] += item['cost']
@@ -1344,7 +1343,7 @@ shop_ducks_detector = 50
                     else:
                         self.send_message(channel, f"Your gun is not confiscated.")
                         channel_stats['xp'] += item['cost']  # Refund XP
-                elif item_id == 22:  # Ducks detector (shop: full 24h duration)
+                elif item_id == 21:  # Ducks detector (shop: full 24h duration)
                     now = time.time()
                     duration = 24 * 3600
                     current_until = channel_stats.get('ducks_detector_until', 0)
