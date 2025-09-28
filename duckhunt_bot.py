@@ -403,6 +403,12 @@ shop_mechanical_duck = 50
                 'silencer_until': 0,
                 'sunglasses_until': 0,
                 'ducks_detector_until': 0,
+                'mirror_until': 0,
+                'sand_until': 0,
+                'soaked_until': 0,
+                'life_insurance_until': 0,
+                'liability_insurance_until': 0,
+                'brush_until': 0,
                 'clover_until': 0,
                 'clover_bonus': 0,
                 'sight_next_shot': False
@@ -426,6 +432,18 @@ shop_mechanical_duck = 50
             stats['silencer_until'] = 0
         if 'sunglasses_until' not in stats:
             stats['sunglasses_until'] = 0
+        if 'mirror_until' not in stats:
+            stats['mirror_until'] = 0
+        if 'sand_until' not in stats:
+            stats['sand_until'] = 0
+        if 'soaked_until' not in stats:
+            stats['soaked_until'] = 0
+        if 'life_insurance_until' not in stats:
+            stats['life_insurance_until'] = 0
+        if 'liability_insurance_until' not in stats:
+            stats['liability_insurance_until'] = 0
+        if 'brush_until' not in stats:
+            stats['brush_until'] = 0
         if 'ducks_detector_until' not in stats:
             stats['ducks_detector_until'] = 0
         if 'clover_until' not in stats:
@@ -720,6 +738,12 @@ shop_mechanical_duck = 50
             # Grease halves jam odds while active
             if channel_stats.get('grease_until', 0) > time.time():
                 reliability = 1.0 - (1.0 - reliability) * 0.5
+            # Sand makes jams more likely (halve reliability)
+            if channel_stats.get('sand_until', 0) > time.time():
+                reliability = reliability * 0.5
+            # Brush slightly improves reliability while active (+10% of remaining)
+            if channel_stats.get('brush_until', 0) > time.time():
+                reliability = reliability + (1.0 - reliability) * 0.10
             if random.random() > reliability:
                 channel_stats['jammed'] = True
                 clip_size = channel_stats.get('clip_size', 10)
@@ -736,10 +760,17 @@ shop_mechanical_duck = 50
             # Accuracy check
             hit_roll = random.random()
             hit_chance = self.compute_accuracy(channel_stats, 'shoot')
+            # Soaked players cannot shoot
+            if channel_stats.get('soaked_until', 0) > time.time():
+                self.send_message(channel, self.pm(user, "You are soaked and cannot shoot. Use spare clothes or wait."))
+                return
             if hit_roll > hit_chance:
                 channel_stats['shots_fired'] += 1
                 channel_stats['misses'] += 1
                 penalty = channel_stats.get('miss_penalty', -1)
+                # Liability insurance halves penalties
+                if channel_stats.get('liability_insurance_until', 0) > time.time() and penalty < 0:
+                    penalty = int(penalty / 2)
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
                 self.send_message(channel, self.pm(user, f"*BANG*     You missed. [{penalty} xp]"))
                 self.save_player_data()
@@ -847,6 +878,8 @@ shop_mechanical_duck = 50
                 self.log_action(f"No ducks to befriend in {channel} - active_ducks keys: {list(self.active_ducks.keys())}")
                 # Apply small penalty for befriending when no ducks are present
                 penalty = channel_stats.get('miss_penalty', -1)
+                if channel_stats.get('liability_insurance_until', 0) > time.time() and penalty < 0:
+                    penalty = int(penalty / 2)
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
                 self.send_message(channel, self.pm(user, f"There are no ducks to befriend. [{penalty} XP]"))
                 self.save_player_data()
@@ -858,8 +891,13 @@ shop_mechanical_duck = 50
             # Accuracy-style check for befriending (duck might not notice)
             bef_roll = random.random()
             bef_chance = self.compute_accuracy(channel_stats, 'bef')
+            if channel_stats.get('soaked_until', 0) > time.time():
+                self.send_message(channel, self.pm(user, "You are soaked and cannot befriend. Use spare clothes or wait."))
+                return
             if bef_roll > bef_chance:
                 penalty = channel_stats.get('miss_penalty', -1)
+                if channel_stats.get('liability_insurance_until', 0) > time.time() and penalty < 0:
+                    penalty = int(penalty / 2)
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
                 self.send_message(channel, self.pm(user, f"FRIEND     The duck seems distracted. Try again. [{penalty} XP]"))
                 self.save_player_data()
@@ -1050,6 +1088,72 @@ shop_mechanical_duck = 50
                     else:
                         channel_stats['sight_next_shot'] = True
                         self.send_message(channel, self.pm(user, "You purchased a sight. Your next shot will be more accurate."))
+                elif item_id == 11:  # Sunglasses: 24h protection against mirror / reduce accident penalty
+                    channel_stats['sunglasses_until'] = max(channel_stats.get('sunglasses_until', 0), time.time() + 24*3600)
+                    self.send_message(channel, self.pm(user, "You put on sunglasses for 24h. You're protected against mirror glare."))
+                elif item_id == 12:  # Spare clothes: clear soaked if present
+                    if channel_stats.get('soaked_until', 0) > time.time():
+                        channel_stats['soaked_until'] = 0
+                        self.send_message(channel, self.pm(user, "You change into spare clothes. You're no longer soaked."))
+                    else:
+                        self.send_notice(user, "You're not soaked. Refunding XP.")
+                        channel_stats['xp'] += item['cost']
+                elif item_id == 13:  # Brush for gun: unjam and small reliability buff for 24h
+                    channel_stats['jammed'] = False
+                    channel_stats['brush_until'] = max(channel_stats.get('brush_until', 0), time.time() + 24*3600)
+                    self.send_message(channel, self.pm(user, "You clean your gun. It feels smoother for 24h."))
+                elif item_id == 14:  # Mirror: reflect accidents back to shooter unless they wear sunglasses (target required)
+                    if len(args) < 2:
+                        self.send_notice(user, "Usage: !shop 14 <nick>")
+                        channel_stats['xp'] += item['cost']
+                    else:
+                        target = args[1]
+                        tstats = self.get_channel_stats(target, channel)
+                        tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
+                        self.send_message(channel, self.pm(user, f"You hand a mirror to {target}. It will reflect glare for 24h."))
+                elif item_id == 15:  # Handful of sand: victim reliability worse for 24h (target required)
+                    if len(args) < 2:
+                        self.send_notice(user, "Usage: !shop 15 <nick>")
+                        channel_stats['xp'] += item['cost']
+                    else:
+                        target = args[1]
+                        tstats = self.get_channel_stats(target, channel)
+                        tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 24*3600)
+                        self.send_message(channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 24h."))
+                elif item_id == 16:  # Water bucket: soak target for 1h (target required)
+                    if len(args) < 2:
+                        self.send_notice(user, "Usage: !shop 16 <nick>")
+                        channel_stats['xp'] += item['cost']
+                    else:
+                        target = args[1]
+                        tstats = self.get_channel_stats(target, channel)
+                        tstats['soaked_until'] = max(tstats.get('soaked_until', 0), time.time() + 3600)
+                        self.send_message(channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes."))
+                elif item_id == 17:  # Sabotage: jam target immediately (target required)
+                    if len(args) < 2:
+                        self.send_notice(user, "Usage: !shop 17 <nick>")
+                        channel_stats['xp'] += item['cost']
+                    else:
+                        target = args[1]
+                        tstats = self.get_channel_stats(target, channel)
+                        tstats['jammed'] = True
+                        self.send_message(channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed."))
+                elif item_id == 18:  # Life insurance: protect against confiscation for 24h
+                    channel_stats['life_insurance_until'] = max(channel_stats.get('life_insurance_until', 0), time.time() + 24*3600)
+                    self.send_message(channel, self.pm(user, "You purchase life insurance. Confiscations will be prevented for 24h."))
+                elif item_id == 19:  # Liability insurance: reduce penalties by 50% for 24h
+                    channel_stats['liability_insurance_until'] = max(channel_stats.get('liability_insurance_until', 0), time.time() + 24*3600)
+                    self.send_message(channel, self.pm(user, "You purchase liability insurance. Penalties reduced by 50% for 24h."))
+                elif item_id == 20:  # Decoy: spawn one duck now if capacity allows
+                    norm = self.normalize_channel(channel)
+                    with self.ducks_lock:
+                        ducks = self.active_ducks.setdefault(norm, [])
+                        if len(ducks) >= self.max_ducks:
+                            self.send_message(channel, self.pm(user, "The area is too crowded for a decoy."))
+                            channel_stats['xp'] += item['cost']
+                        else:
+                            self.spawn_duck(channel)
+                            self.send_message(channel, self.pm(user, "You placed a decoy. A duck appears!"))
                 elif item_id == 10:  # Four-leaf clover: +N XP per duck for 24h; single active at a time
                     now = time.time()
                     duration = 24 * 3600
