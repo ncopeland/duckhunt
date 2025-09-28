@@ -689,7 +689,8 @@ shop_mechanical_duck = 50
                 now = time.time()
                 if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
                     channel_stats['infrared_uses'] = max(0, channel_stats.get('infrared_uses', 0) - 1)
-                    self.send_message(channel, self.pm(user, "*CLICK*     Trigger locked."))
+                    remaining_uses = channel_stats.get('infrared_uses', 0)
+                    self.send_message(channel, self.pm(user, f"*CLICK*     Trigger locked. [{remaining_uses} remaining]"))
                     self.save_player_data()
                     return
                 # Otherwise apply usual penalties
