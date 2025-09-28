@@ -854,7 +854,10 @@ shop_mechanical_duck = 50
             bef_roll = random.random()
             bef_chance = self.compute_accuracy(channel_stats, 'bef')
             if bef_roll > bef_chance:
-                self.send_message(channel, self.pm(user, "FRIEND     The duck seems distracted. Try again."))
+                penalty = channel_stats.get('miss_penalty', -1)
+                channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
+                self.send_message(channel, self.pm(user, f"FRIEND     The duck seems distracted. Try again. [{penalty} XP]"))
+                self.save_player_data()
                 return
 
             # Compute befriend effectiveness
