@@ -103,10 +103,10 @@ ssl = off
 bot_nick = DuckHuntBot,DuckHuntBot2
 
 # Channels to join (comma separated)
-channel = #devforge.games,#homescreen
+channel = #yourchannel,#anotherchannel
 
 # Commands to perform on connect (semicolon separated)
-perform = /msg nickserv identify Bot$1122
+perform = PRIVMSG YourNick :I am here
 
 # Bot permissions
 owner = YourNick
@@ -118,7 +118,7 @@ max_spawn = 1800
 gold_ratio = 0.1
 default_xp = 10
 max_ducks = 5
-despawn_time = 720
+despawn_time = 700
 
 # Shop item prices (XP cost)
 shop_extra_bullet = 7
@@ -140,10 +140,8 @@ shop_water_bucket = 10
 shop_sabotage = 14
 shop_life_insurance = 10
 shop_liability_insurance = 5
-shop_decoy = 80
 shop_piece_of_bread = 50
 shop_ducks_detector = 50
-shop_mechanical_duck = 50
 """
         
         with open(config_file, 'w') as f:

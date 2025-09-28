@@ -28,19 +28,45 @@ An IRC bot that hosts Duck Hunt games in IRC channels. Players shoot ducks with 
 ## Running the Bot
 
 1. First run creates `duckhunt.conf` with default settings
-2. Edit `duckhunt.conf` with your IRC server details:
+2. Edit `duckhunt.conf` with your IRC server details (generated defaults shown):
    ```
+   [DEFAULT]
    server = irc.rizon.net/6667
    ssl = off
    bot_nick = DuckHuntBot,DuckHuntBot2
-   channel = #yourchannel
+   channel = #yourchannel,#anotherchannel
    perform = PRIVMSG YourNick :I am here
    owner = YourNick
-   admin = admin1,admin2
-   min_spawn = 60
-   max_spawn = 180
+   admin = Admin1,Admin2
+   min_spawn = 600
+   max_spawn = 1800
    gold_ratio = 0.1
    default_xp = 10
+   max_ducks = 5
+   despawn_time = 700
+
+   # Shop item prices
+   shop_extra_bullet = 7
+   shop_extra_magazine = 20
+   shop_ap_ammo = 15
+   shop_explosive_ammo = 25
+   shop_repurchase_gun = 40
+   shop_grease = 8
+   shop_sight = 6
+   shop_infrared_detector = 15
+   shop_silencer = 5
+   shop_four_leaf_clover = 13
+   shop_sunglasses = 5
+   shop_spare_clothes = 7
+   shop_brush_for_gun = 7
+   shop_mirror = 7
+   shop_handful_of_sand = 7
+   shop_water_bucket = 10
+   shop_sabotage = 14
+   shop_life_insurance = 10
+   shop_liability_insurance = 5
+   shop_piece_of_bread = 50
+   shop_ducks_detector = 50
    ```
 
 3. Run the bot:
