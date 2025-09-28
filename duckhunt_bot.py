@@ -71,10 +71,10 @@ class DuckHuntBot:
             17: {"name": "Sabotage", "cost": int(self.config.get('shop_sabotage', 14)), "description": "Jams target's gun"},
             18: {"name": "Life insurance", "cost": int(self.config.get('shop_life_insurance', 10)), "description": "Protects against accidents"},
             19: {"name": "Liability insurance", "cost": int(self.config.get('shop_liability_insurance', 5)), "description": "Reduces accident penalties"},
-            20: {"name": "Decoy", "cost": int(self.config.get('shop_decoy', 80)), "description": "Attracts ducks"},
+            20: {"name": "Upgrade Magazine", "cost": 200, "description": "Increase ammo per magazine (up to 5 levels)"},
             21: {"name": "Piece of bread", "cost": int(self.config.get('shop_piece_of_bread', 50)), "description": "Lures ducks"},
             22: {"name": "Ducks detector", "cost": int(self.config.get('shop_ducks_detector', 50)), "description": "Warns of next duck spawn"},
-            23: {"name": "Mechanical duck", "cost": int(self.config.get('shop_mechanical_duck', 50)), "description": "Practice target"}
+            23: {"name": "Extra Magazine Capacity", "cost": 200, "description": "Increase max carried magazines (up to 5 levels)"}
         }
         
     def load_config(self, config_file):
@@ -1240,16 +1240,20 @@ shop_mechanical_duck = 50
                 elif item_id == 19:  # Liability insurance: reduce penalties by 50% for 24h
                     channel_stats['liability_insurance_until'] = max(channel_stats.get('liability_insurance_until', 0), time.time() + 24*3600)
                     self.send_message(channel, self.pm(user, "You purchase liability insurance. Penalties reduced by 50% for 24h."))
-                elif item_id == 20:  # Decoy: spawn one duck now if capacity allows
-                    norm = self.normalize_channel(channel)
-                    with self.ducks_lock:
-                        ducks = self.active_ducks.setdefault(norm, [])
-                        if len(ducks) >= self.max_ducks:
-                            self.send_message(channel, self.pm(user, "The area is too crowded for a decoy."))
-                            channel_stats['xp'] += item['cost']
-                        else:
-                            self.spawn_duck(channel)
-                            self.send_message(channel, self.pm(user, "You placed a decoy. A duck appears!"))
+                elif item_id == 20:  # Upgrade Magazine: increase clip size (level 1-5), cost scales by 200 each level
+                    current_level = channel_stats.get('mag_upgrade_level', 0)
+                    if current_level >= 5:
+                        self.send_message(channel, self.pm(user, "Your magazine is already fully upgraded."))
+                        channel_stats['xp'] += item['cost']
+                    else:
+                        # Each level adds +1 to clip size
+                        channel_stats['mag_upgrade_level'] = current_level + 1
+                        channel_stats['clip_size'] = channel_stats.get('clip_size', 10) + 1
+                        # Refill ammo to new clip size
+                        channel_stats['ammo'] = min(channel_stats['clip_size'], channel_stats['ammo'] + 1)
+                        self.send_message(channel, self.pm(user, f"Upgrade applied. Magazine capacity increased to {channel_stats['clip_size']}."))
+                        # Scale next cost up to 1000
+                        item['cost'] = min(1000, item['cost'] + 200)
                 elif item_id == 10:  # Four-leaf clover: +N XP per duck for 24h; single active at a time
                     now = time.time()
                     duration = 24 * 3600
@@ -1299,6 +1303,18 @@ shop_mechanical_duck = 50
                     current_until = channel_stats.get('ducks_detector_until', 0)
                     channel_stats['ducks_detector_until'] = max(current_until, now + duration)
                     self.send_message(channel, self.pm(user, "Ducks detector activated for 24h. You'll get a 60s pre-spawn notice."))
+                elif item_id == 23:  # Extra Magazine Capacity: increase magazines_max (level 1-5), cost scales
+                    current_level = channel_stats.get('mag_capacity_level', 0)
+                    if current_level >= 5:
+                        self.send_message(channel, self.pm(user, "You already carry the maximum extra magazines."))
+                        channel_stats['xp'] += item['cost']
+                    else:
+                        channel_stats['mag_capacity_level'] = current_level + 1
+                        channel_stats['magazines_max'] = channel_stats.get('magazines_max', 2) + 1
+                        # Grant one extra empty magazine immediately
+                        channel_stats['magazines'] = min(channel_stats['magazines_max'], channel_stats['magazines'] + 1)
+                        self.send_message(channel, self.pm(user, f"Upgrade applied. You can now carry {channel_stats['magazines_max']} magazines."))
+                        item['cost'] = min(1000, item['cost'] + 200)
                 else:
                     # For other items, just show generic message
                     self.send_message(channel, f"You purchased {item['name']} in exchange for {item['cost']} xp points.")
@@ -1793,34 +1809,64 @@ shop_mechanical_duck = 50
                 channel_stats['sight_next_shot'] = True
                 say("By searching the bushes, you find a sight for your gun! Your next shot will be more accurate.")
         elif choice == "silencer":
-            channel_stats['silencer_until'] = max(channel_stats.get('silencer_until', 0), now + day)
-            say("By searching the bushes, you find a silencer! It will prevent frightening ducks for 24h.")
+            if channel_stats.get('silencer_until', 0) > now:
+                cost = int(self.config.get('shop_silencer', 5))
+                channel_stats['xp'] += cost
+                say(f"You find a silencer, but you already have one active. [+{cost} xp]")
+            else:
+                channel_stats['silencer_until'] = now + day
+                say("By searching the bushes, you find a silencer! It will prevent frightening ducks for 24h.")
         elif choice == "ducks_detector":
-            channel_stats['ducks_detector_until'] = max(channel_stats.get('ducks_detector_until', 0), now + day)
-            say("By searching the bushes, you find a ducks detector! You'll get a 60s pre-spawn notice for 24h.")
+            if channel_stats.get('ducks_detector_until', 0) > now:
+                cost = int(self.config.get('shop_ducks_detector', 50))
+                channel_stats['xp'] += cost
+                say(f"You find a ducks detector, but you already have one active. [+{cost} xp]")
+            else:
+                channel_stats['ducks_detector_until'] = now + day
+                say("By searching the bushes, you find a ducks detector! You'll get a 60s pre-spawn notice for 24h.")
         elif choice == "ap_ammo":
             if channel_stats.get('ap_shots', 0) > 0:
-                xp = 10
+                xp = int(self.config.get('shop_ap_ammo', 15))
                 channel_stats['xp'] += xp
-                say(f"You find AP ammo, but you already have some. You gain {xp} XP instead.")
+                say(f"You find AP ammo, but you already have some. [+{xp} xp]")
             else:
                 channel_stats['explosive_shots'] = 0
                 channel_stats['ap_shots'] = 20
                 say("By searching the bushes, you find AP ammo! Next 20 shots deal extra damage to golden ducks.")
         elif choice == "explosive_ammo":
-            channel_stats['ap_shots'] = 0
-            channel_stats['explosive_shots'] = 20
-            say("By searching the bushes, you find explosive ammo! Next 20 shots deal extra damage to golden ducks.")
+            if channel_stats.get('explosive_shots', 0) > 0:
+                xp = int(self.config.get('shop_explosive_ammo', 25))
+                channel_stats['xp'] += xp
+                say(f"You find explosive ammo, but you already have some. [+{xp} xp]")
+            else:
+                channel_stats['ap_shots'] = 0
+                channel_stats['explosive_shots'] = 20
+                say("By searching the bushes, you find explosive ammo! Next 20 shots deal extra damage to golden ducks.")
         elif choice == "grease":
-            channel_stats['grease_until'] = max(channel_stats.get('grease_until', 0), now + day)
-            say("By searching the bushes, you find grease! Your gun will jam half as often for 24h.")
+            if channel_stats.get('grease_until', 0) > now:
+                cost = int(self.config.get('shop_grease', 8))
+                channel_stats['xp'] += cost
+                say(f"You find grease, but you already have some applied. [+{cost} xp]")
+            else:
+                channel_stats['grease_until'] = now + day
+                say("By searching the bushes, you find grease! Your gun will jam half as often for 24h.")
         elif choice == "sunglasses":
-            channel_stats['sunglasses_until'] = max(channel_stats.get('sunglasses_until', 0), now + day)
-            say("By searching the bushes, you find sunglasses! You're protected against bedazzlement for 24h.")
+            if channel_stats.get('sunglasses_until', 0) > now:
+                cost = int(self.config.get('shop_sunglasses', 5))
+                channel_stats['xp'] += cost
+                say(f"You find sunglasses, but you're already wearing some. [+{cost} xp]")
+            else:
+                channel_stats['sunglasses_until'] = now + day
+                say("By searching the bushes, you find sunglasses! You're protected against bedazzlement for 24h.")
         elif choice == "infrared":
-            channel_stats['infrared_until'] = max(channel_stats.get('infrared_until', 0), now + day)
-            channel_stats['infrared_uses'] = max(channel_stats.get('infrared_uses', 0), 6)
-            say("By searching the bushes, you find an infrared detector! Trigger locks when no duck (6 uses, 24h).")
+            if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
+                cost = int(self.config.get('shop_infrared_detector', 15))
+                channel_stats['xp'] += cost
+                say(f"You find an infrared detector, but yours is still active. [+{cost} xp]")
+            else:
+                channel_stats['infrared_until'] = now + day
+                channel_stats['infrared_uses'] = max(channel_stats.get('infrared_uses', 0), 6)
+                say("By searching the bushes, you find an infrared detector! Trigger locks when no duck (6 uses, 24h).")
         elif choice == "wallet_150xp":
             xp = 150
             channel_stats['xp'] += xp
