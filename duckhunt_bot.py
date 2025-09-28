@@ -1197,10 +1197,13 @@ shop_ducks_detector = 50
                     else:
                         self.send_notice(user, "You're not soaked. Refunding XP.")
                         channel_stats['xp'] += item['cost']
-                elif item_id == 13:  # Brush for gun: unjam and small reliability buff for 24h
+                elif item_id == 13:  # Brush for gun: unjam, clear sand, and small reliability buff for 24h
                     channel_stats['jammed'] = False
+                    # Clear sand debuff if present
+                    if channel_stats.get('sand_until', 0) > time.time():
+                        channel_stats['sand_until'] = 0
                     channel_stats['brush_until'] = max(channel_stats.get('brush_until', 0), time.time() + 24*3600)
-                    self.send_message(channel, self.pm(user, "You clean your gun. It feels smoother for 24h."))
+                    self.send_message(channel, self.pm(user, "You clean your gun and remove sand. It feels smoother for 24h."))
                 elif item_id == 14:  # Mirror: apply dazzle debuff to target unless countered by sunglasses (target required)
                     if len(args) < 2:
                         self.send_notice(user, "Usage: !shop 14 <nick>")
@@ -1215,15 +1218,15 @@ shop_ducks_detector = 50
                         else:
                             tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
                             self.send_message(channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced."))
-                elif item_id == 15:  # Handful of sand: victim reliability worse for 24h (target required)
+                elif item_id == 15:  # Handful of sand: victim reliability worse for 1h (target required)
                     if len(args) < 2:
                         self.send_notice(user, "Usage: !shop 15 <nick>")
                         channel_stats['xp'] += item['cost']
                     else:
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel)
-                        tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 24*3600)
-                        self.send_message(channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 24h."))
+                        tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 3600)
+                        self.send_message(channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h."))
                 elif item_id == 16:  # Water bucket: soak target for 1h (target required)
                     if len(args) < 2:
                         self.send_notice(user, "Usage: !shop 16 <nick>")
