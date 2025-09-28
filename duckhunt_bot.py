@@ -450,6 +450,10 @@ shop_ducks_detector = 50
             stats['clover_bonus'] = 0
         if 'sight_next_shot' not in stats:
             stats['sight_next_shot'] = False
+        if 'mag_upgrade_level' not in stats:
+            stats['mag_upgrade_level'] = 0
+        if 'mag_capacity_level' not in stats:
+            stats['mag_capacity_level'] = 0
         if 'level' not in stats:
             stats['level'] = min(50, (stats.get('xp', 0) // 100) + 1)
         # Dynamic properties will be (re)computed each fetch
@@ -1098,7 +1102,17 @@ shop_ducks_detector = 50
             # Group items into chunks that fit IRC message limits
             items = []
             for item_id, item in self.shop_items.items():
-                items.append(f"{item_id}- {item['name']} ({item['cost']} xp)")
+                # Dynamic costs for upgrades (22/23) are per-player based on current level
+                if item_id == 22:
+                    lvl = self.get_channel_stats(user, channel).get('mag_upgrade_level', 0)
+                    dyn_cost = min(1000, 200 * (lvl + 1))
+                    items.append(f"{item_id}- {item['name']} ({dyn_cost} xp)")
+                elif item_id == 23:
+                    lvl = self.get_channel_stats(user, channel).get('mag_capacity_level', 0)
+                    dyn_cost = min(1000, 200 * (lvl + 1))
+                    items.append(f"{item_id}- {item['name']} ({dyn_cost} xp)")
+                else:
+                    items.append(f"{item_id}- {item['name']} ({item['cost']} xp)")
             
             # Split into chunks of ~400 characters each
             current_chunk = ""
@@ -1128,12 +1142,18 @@ shop_ducks_detector = 50
                 player = self.get_player(user)
                 channel_stats = self.get_channel_stats(user, channel)
                 item = self.shop_items[item_id]
-                
-                if channel_stats['xp'] < item['cost']:
-                    self.send_notice(user, f"You don't have enough XP in {channel}. You need {item['cost']} xp.")
+                # Determine dynamic cost for upgrades
+                cost = item['cost']
+                if item_id == 22:
+                    lvl = channel_stats.get('mag_upgrade_level', 0)
+                    cost = min(1000, 200 * (lvl + 1))
+                elif item_id == 23:
+                    lvl = channel_stats.get('mag_capacity_level', 0)
+                    cost = min(1000, 200 * (lvl + 1))
+                if channel_stats['xp'] < cost:
+                    self.send_notice(user, f"You don't have enough XP in {channel}. You need {cost} xp.")
                     return
-                
-                channel_stats['xp'] -= item['cost']
+                channel_stats['xp'] -= cost
                 
                 # Apply item effects
                 if item_id == 1:  # Extra bullet
@@ -1251,7 +1271,23 @@ shop_ducks_detector = 50
                 elif item_id == 19:  # Liability insurance: reduce penalties by 50% for 24h
                     channel_stats['liability_insurance_until'] = max(channel_stats.get('liability_insurance_until', 0), time.time() + 24*3600)
                     self.send_message(channel, self.pm(user, "You purchase liability insurance. Penalties reduced by 50% for 24h."))
-                elif item_id == 20:  # Upgrade Magazine: increase clip size (level 1-5), cost scales by 200 each level
+                elif item_id == 20:  # Upgrade Magazine: increase clip size (legacy path, keep as alias to 22)
+                    # Treat as 22 to avoid discrepancies
+                    current_level = channel_stats.get('mag_upgrade_level', 0)
+                    alias_cost = min(1000, 200 * (current_level + 1))
+                    if cost != alias_cost:
+                        # Adjust xp delta if earlier deduction used different cost
+                        delta = cost - alias_cost
+                        channel_stats['xp'] = max(0, channel_stats['xp'] + delta)
+                        cost = alias_cost
+                    if current_level >= 5:
+                        self.send_message(channel, self.pm(user, "Your magazine is already fully upgraded."))
+                        channel_stats['xp'] += cost
+                    else:
+                        channel_stats['mag_upgrade_level'] = current_level + 1
+                        channel_stats['clip_size'] = channel_stats.get('clip_size', 10) + 1
+                        channel_stats['ammo'] = min(channel_stats['clip_size'], channel_stats['ammo'] + 1)
+                        self.send_message(channel, self.pm(user, f"Upgrade applied. Magazine capacity increased to {channel_stats['clip_size']}."))
                     current_level = channel_stats.get('mag_upgrade_level', 0)
                     if current_level >= 5:
                         self.send_message(channel, self.pm(user, "Your magazine is already fully upgraded."))
