@@ -71,9 +71,9 @@ class DuckHuntBot:
             17: {"name": "Sabotage", "cost": int(self.config.get('shop_sabotage', 14)), "description": "Jams target's gun"},
             18: {"name": "Life insurance", "cost": int(self.config.get('shop_life_insurance', 10)), "description": "Protects against accidents"},
             19: {"name": "Liability insurance", "cost": int(self.config.get('shop_liability_insurance', 5)), "description": "Reduces accident penalties"},
-            20: {"name": "Upgrade Magazine", "cost": 200, "description": "Increase ammo per magazine (up to 5 levels)"},
-            21: {"name": "Piece of bread", "cost": int(self.config.get('shop_piece_of_bread', 50)), "description": "Lures ducks"},
-            22: {"name": "Ducks detector", "cost": int(self.config.get('shop_ducks_detector', 50)), "description": "Warns of next duck spawn"},
+            20: {"name": "Piece of bread", "cost": int(self.config.get('shop_piece_of_bread', 50)), "description": "Lures ducks"},
+            21: {"name": "Ducks detector", "cost": int(self.config.get('shop_ducks_detector', 50)), "description": "Warns of next duck spawn"},
+            22: {"name": "Upgrade Magazine", "cost": 200, "description": "Increase ammo per magazine (up to 5 levels)"},
             23: {"name": "Extra Magazine Capacity", "cost": 200, "description": "Increase max carried magazines (up to 5 levels)"}
         }
         
