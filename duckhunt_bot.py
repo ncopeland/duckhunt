@@ -1283,23 +1283,13 @@ shop_ducks_detector = 50
                         self.send_message(channel, self.pm(user, "Your magazine is already fully upgraded."))
                         channel_stats['xp'] += cost
                     else:
-                        channel_stats['mag_upgrade_level'] = current_level + 1
-                        channel_stats['clip_size'] = channel_stats.get('clip_size', 10) + 1
+                        next_level = current_level + 1
+                        channel_stats['mag_upgrade_level'] = next_level
+                        # Recompute clip_size via level bonuses so upgrades stack correctly
+                        self.apply_level_bonuses(channel_stats)
+                        # Top off ammo by 1 up to new clip size
                         channel_stats['ammo'] = min(channel_stats['clip_size'], channel_stats['ammo'] + 1)
                         self.send_message(channel, self.pm(user, f"Upgrade applied. Magazine capacity increased to {channel_stats['clip_size']}."))
-                    current_level = channel_stats.get('mag_upgrade_level', 0)
-                    if current_level >= 5:
-                        self.send_message(channel, self.pm(user, "Your magazine is already fully upgraded."))
-                        channel_stats['xp'] += item['cost']
-                    else:
-                        # Each level adds +1 to clip size
-                        channel_stats['mag_upgrade_level'] = current_level + 1
-                        channel_stats['clip_size'] = channel_stats.get('clip_size', 10) + 1
-                        # Refill ammo to new clip size
-                        channel_stats['ammo'] = min(channel_stats['clip_size'], channel_stats['ammo'] + 1)
-                        self.send_message(channel, self.pm(user, f"Upgrade applied. Magazine capacity increased to {channel_stats['clip_size']}."))
-                        # Scale next cost up to 1000
-                        item['cost'] = min(1000, item['cost'] + 200)
                 elif item_id == 10:  # Four-leaf clover: +N XP per duck for 24h; single active at a time
                     now = time.time()
                     duration = 24 * 3600
