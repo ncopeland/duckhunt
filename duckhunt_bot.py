@@ -305,8 +305,10 @@ shop_ducks_detector = 50
         
         # Send IRC handshake
         bot_nicks = self.config['bot_nick'].split(',')
+        # Remember our current nick to detect self-joins
+        self.nick = bot_nicks[0]
         self.send(f"USER DuckHuntBot 0 * :Duck Hunt Game Bot v{self.version}")
-        self.send(f"NICK {bot_nicks[0]}")
+        self.send(f"NICK {self.nick}")
     
     def complete_registration(self):
         """Complete IRC registration by joining channels and running perform commands"""
@@ -1698,6 +1700,11 @@ shop_ducks_detector = 50
             channel = args[0]
             self.send(f"JOIN {channel}")
             self.channels[channel] = set()
+            # Create a schedule immediately for the newly joined channel
+            try:
+                self.schedule_channel_next_duck(channel)
+            except Exception as e:
+                self.log_action(f"Failed to schedule on owner join for {channel}: {e}")
             self.send_notice(user, f"Joined {channel}")
         elif command == "clear" and args:
             channel = args[0]
@@ -1817,6 +1824,12 @@ shop_ducks_detector = 50
                 if channel in self.channels:
                     self.channels[channel].add(user)
                 self.log_message("JOIN", f"{user} joined {channel}")
+                # If we (the bot) joined, ensure a schedule is created
+                try:
+                    if hasattr(self, 'nick') and user == self.nick:
+                        self.schedule_channel_next_duck(channel)
+                except Exception as e:
+                    self.log_action(f"Failed to schedule on self JOIN for {channel}: {e}")
         
         elif "PART" in data:
             # User left channel
@@ -1847,6 +1860,13 @@ shop_ducks_detector = 50
         if not message.startswith('!'):
             return
         
+        # Ensure channel has a schedule; if missing, create one lazily
+        try:
+            if not self.channel_next_spawn.get(channel):
+                self.schedule_channel_next_duck(channel)
+        except Exception as e:
+            self.log_action(f"Lazy schedule init failed for {channel}: {e}")
+
         command_parts = message[1:].split()
         command = command_parts[0].lower()
         args = command_parts[1:] if len(command_parts) > 1 else []
