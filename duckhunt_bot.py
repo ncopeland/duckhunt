@@ -30,6 +30,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.channel_ducks = {}  # Per-channel duck lists: {channel: [{'spawn_time': time, 'golden': bool}]}
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
+        # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
         self.version = "1.0_build36"
         self.registered = False
@@ -42,6 +43,11 @@ class DuckHuntBot:
         self.next_spawn_channel = None
         self.pre_spawn_notice_time = None
         self.next_spawn_notice_sent = False
+        # Per-channel scheduling (guaranteed per-channel spawns)
+        self.channel_next_spawn = {}
+        self.channel_pre_notice = {}
+        self.channel_notice_sent = {}
+        self.channel_last_spawn = {}
         
         # Game settings
         self.min_spawn = int(self.config.get('min_spawn', 600))
@@ -324,7 +330,7 @@ shop_ducks_detector = 50
                 if cmd.strip():
                     self.send(cmd.strip())
         
-        # Schedule first duck spawn
+        # Schedule first duck spawn per channel
         self.schedule_next_duck()
     
     def is_owner(self, user):
@@ -561,9 +567,9 @@ shop_ducks_detector = 50
         ]
         title = titles[min(new_level-1, len(titles)-1)] if new_level > 0 else "unknown"
         if new_level > prev_level:
-            self.send_message(channel, self.pm(user, f"PROMOTION     You are promoted to level {new_level} ({title})."))
+            self.send_message(channel, self.pm(user, f"PROMOTION     You are promoted to level {new_level} ({title}) in {channel}."))
         else:
-            self.send_message(channel, self.pm(user, f"DEMOTION     You are demoted to level {new_level} ({title})."))
+            self.send_message(channel, self.pm(user, f"DEMOTION     You are demoted to level {new_level} ({title}) in {channel}."))
         stats['level'] = new_level
 
     def apply_level_bonuses(self, channel_stats):
@@ -631,50 +637,72 @@ shop_ducks_detector = 50
             self.log_action(f"Duck spawned in {channel} - spawn_time: {duck['spawn_time']}")
             self.log_action(f"[DEBUG] Active_ducks state after spawn: { {ch: len(lst) for ch,lst in self.active_ducks.items()} }")
         
-        # Schedule next random spawn (unless called manually with schedule=False)
+        # Mark last spawn time for guarantees
+        try:
+            self.channel_last_spawn[channel] = time.time()
+        except Exception:
+            pass
+        # Schedule next spawn for this channel (unless called manually with schedule=False)
         if schedule:
-            self.schedule_next_duck()
+            self.schedule_channel_next_duck(channel)
     
     def schedule_next_duck(self):
-        """Schedule next duck spawn"""
-        spawn_delay = random.randint(self.min_spawn, self.max_spawn)
+        """Legacy global scheduler: keep behavior by scheduling all channels."""
+        # Schedule each joined channel independently
+        for ch in list(self.channels.keys()):
+            self.schedule_channel_next_duck(ch)
+
+    def schedule_channel_next_duck(self, channel: str):
+        """Schedule next duck spawn for a specific channel with pre-notice.
+        Hard guarantee: never allow gap > max_spawn; if overdue, schedule immediate.
+        """
         now = time.time()
-        self.duck_spawn_time = now + spawn_delay
-        # Choose the channel now so we can pre-notify
-        # Prefer currently joined channels; fallback to configured list
-        joined_channels = list(self.channels.keys()) if getattr(self, 'channels', None) else []
-        if joined_channels:
-            channels = joined_channels
+        last = self.channel_last_spawn.get(channel, 0)
+        # If we've never spawned, schedule randomly within window
+        if last == 0:
+            spawn_delay = random.randint(self.min_spawn, self.max_spawn)
+            due_time = now + spawn_delay
         else:
-            channels = [ch.strip() for ch in self.config.get('channel', '#default').split(',') if ch.strip()]
-        self.next_spawn_channel = random.choice(channels) if channels else None
-        # 60s head start pre-notice
-        self.pre_spawn_notice_time = max(now, self.duck_spawn_time - 60)
-        self.next_spawn_notice_sent = False
-        self.log_action(f"Next duck scheduled in {spawn_delay} seconds for {self.next_spawn_channel}")
+            latest_allowed = last + self.max_spawn
+            if now > latest_allowed:
+                # Overdue -> force immediate spawn and then reschedule
+                due_time = now
+            else:
+                # Still within window; pick a random time between now and latest_allowed
+                remaining_window = max(0, int(latest_allowed - now))
+                # Ensure at least 1s
+                spawn_delay = random.randint(1, max(1, remaining_window))
+                due_time = now + spawn_delay
+        self.channel_next_spawn[channel] = due_time
+        self.channel_pre_notice[channel] = max(now, due_time - 60)
+        self.channel_notice_sent[channel] = False
+        self.log_action(f"Next duck scheduled for {channel} at {int(due_time - now)}s from now")
 
     def notify_duck_detector(self):
-        """Notify players with an active duck detector 60s before spawn."""
-        if not self.next_spawn_channel:
-            return
-        channel = self.next_spawn_channel
-        if channel not in self.channels:
-            return
+        """Notify players with an active duck detector 60s before spawn, per channel."""
         now = time.time()
-        # Notify each user in the channel with active detector
-        for user in list(self.channels.get(channel, [])):
-            try:
-                stats = self.get_channel_stats(user, channel)
-            except Exception:
+        for channel in list(self.channels.keys()):
+            pre = self.channel_pre_notice.get(channel)
+            if pre is None:
                 continue
-            until = stats.get('ducks_detector_until', 0)
-            if until and until > now:
-                seconds_left = int(self.duck_spawn_time - now) if self.duck_spawn_time else 60
-                seconds_left = max(0, seconds_left)
-                minutes = seconds_left // 60
-                secs = seconds_left % 60
-                msg = f"[Duck Detector] A duck will spawn in {minutes}m{secs:02d}s in {channel}."
-                self.send_notice(user, msg)
+            if not self.channel_notice_sent.get(channel, False) and now >= pre:
+                # Notify each user in the channel with active detector
+                for user in list(self.channels.get(channel, [])):
+                    try:
+                        stats = self.get_channel_stats(user, channel)
+                    except Exception:
+                        continue
+                    until = stats.get('ducks_detector_until', 0)
+                    if until and until > now:
+                        # Compute seconds left to channel spawn
+                        nxt = self.channel_next_spawn.get(channel)
+                        seconds_left = int(nxt - now) if nxt else 60
+                        seconds_left = max(0, seconds_left)
+                        minutes = seconds_left // 60
+                        secs = seconds_left % 60
+                        msg = f"[Duck Detector] A duck will spawn in {minutes}m{secs:02d}s in {channel}."
+                        self.send_notice(user, msg)
+                self.channel_notice_sent[channel] = True
     
     def despawn_old_ducks(self):
         """Remove ducks that have been alive too long"""
@@ -1558,7 +1586,7 @@ shop_ducks_detector = 50
             duck_art = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· \\_O<   QUACK   * GOLDEN DUCK DETECTED *"
             self.send_message(channel, duck_art)
             self.log_action(f"{user} spawned golden duck in {channel}")
-            self.schedule_next_duck()
+            # Do not reset per-channel timer on manual spawns
         elif command == "rearm" and args:
             target = args[0]
             if target in self.players:
@@ -1985,28 +2013,17 @@ shop_ducks_detector = 50
                     elif elapsed > 25:  # Debug logging
                         self.log_action(f"MOTD timeout approaching: {elapsed:.1f}s elapsed ({self.message_count} messages)")
                 
-                # Check for duck spawn (only after registration)
-                # Send pre-spawn notice 60s before spawn time
-                if hasattr(self, 'registration_complete') and self.duck_spawn_time and not self.next_spawn_notice_sent:
+                # Per-channel pre-spawn notices and spawns (only after registration)
+                if hasattr(self, 'registration_complete'):
+                    # Send any due pre-notices
+                    self.notify_duck_detector()
+                    # Perform any due spawns per channel
                     now = time.time()
-                    if self.pre_spawn_notice_time and now >= self.pre_spawn_notice_time:
-                        self.notify_duck_detector()
-                        self.next_spawn_notice_sent = True
-                # Perform the actual spawn
-                if hasattr(self, 'registration_complete') and self.duck_spawn_time and time.time() >= self.duck_spawn_time:
-                    # Use the preselected channel if available
-                    if self.next_spawn_channel:
-                        self.spawn_duck(self.next_spawn_channel)
-                    else:
-                        self.spawn_duck()
-                    self.duck_spawn_time = None
-                    self.next_spawn_channel = None
-                    self.pre_spawn_notice_time = None
-                    self.next_spawn_notice_sent = False
-                elif hasattr(self, 'registration_complete') and not self.duck_spawn_time:
-                    # Debug: registration complete but no spawn time set
-                    self.log_action("DEBUG: Registration complete but no duck spawn time set - scheduling now")
-                    self.schedule_next_duck()
+                    for ch, when in list(self.channel_next_spawn.items()):
+                        if when and now >= when:
+                            self.spawn_duck(ch)
+                            # Clear consumed schedule entry to avoid double triggers
+                            self.channel_next_spawn[ch] = None
                 
                 # Duck despawn is handled in the exception handler with proper throttling
                 
@@ -2022,23 +2039,14 @@ shop_ducks_detector = 50
                         elif elapsed > 25:  # Debug logging
                             self.log_action(f"MOTD timeout approaching (no data): {elapsed:.1f}s elapsed")
                     
-                    # Check for duck spawn (only after registration)
-                    # Pre-spawn notice handling during idle
-                    if hasattr(self, 'registration_complete') and self.duck_spawn_time and not self.next_spawn_notice_sent:
+                    # Per-channel pre-spawn notices and spawns during idle
+                    if hasattr(self, 'registration_complete'):
+                        self.notify_duck_detector()
                         now = time.time()
-                        if self.pre_spawn_notice_time and now >= self.pre_spawn_notice_time:
-                            self.notify_duck_detector()
-                            self.next_spawn_notice_sent = True
-                    # Spawn at scheduled time
-                    if hasattr(self, 'registration_complete') and self.duck_spawn_time and time.time() >= self.duck_spawn_time:
-                        if self.next_spawn_channel:
-                            self.spawn_duck(self.next_spawn_channel)
-                        else:
-                            self.spawn_duck()
-                        self.duck_spawn_time = None
-                        self.next_spawn_channel = None
-                        self.pre_spawn_notice_time = None
-                        self.next_spawn_notice_sent = False
+                        for ch, when in list(self.channel_next_spawn.items()):
+                            if when and now >= when:
+                                self.spawn_duck(ch)
+                                self.channel_next_spawn[ch] = None
                     
                     # Check for duck despawn (only after registration, throttled to once per second)
                     if hasattr(self, 'registration_complete'):
