@@ -589,8 +589,8 @@ shop_ducks_detector = 50
                 if self.normalize_channel(ch_key) == target_norm and stats.get('confiscated'):
                     stats['confiscated'] = False
     
-    def spawn_duck(self, channel=None):
-        """Spawn a new duck in a specific channel"""
+    def spawn_duck(self, channel=None, schedule: bool = True):
+        """Spawn a new duck in a specific channel. If schedule is False, do not reset the auto timer."""
         if channel is None:
             # Pick a random channel
             channels = [ch.strip() for ch in self.config.get('channel', '#default').split(',') if ch.strip()]
@@ -631,8 +631,9 @@ shop_ducks_detector = 50
             self.log_action(f"Duck spawned in {channel} - spawn_time: {duck['spawn_time']}")
             self.log_action(f"[DEBUG] Active_ducks state after spawn: { {ch: len(lst) for ch,lst in self.active_ducks.items()} }")
         
-        # Schedule next random spawn
-        self.schedule_next_duck()
+        # Schedule next random spawn (unless called manually with schedule=False)
+        if schedule:
+            self.schedule_next_duck()
     
     def schedule_next_duck(self):
         """Schedule next duck spawn"""
@@ -1535,7 +1536,8 @@ shop_ducks_detector = 50
                 remaining_capacity = max(0, self.max_ducks - len(self.active_ducks[norm_channel]))
             to_spawn = min(count, remaining_capacity)
             for _ in range(to_spawn):
-                self.spawn_duck(channel)
+                # Do not push back the automatic timer when spawning manually
+                self.spawn_duck(channel, schedule=False)
                 spawned += 1
             
             if spawned > 0:
