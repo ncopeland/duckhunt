@@ -1440,7 +1440,7 @@ shop_ducks_detector = 50
         stats_text += f"[Channel Stats]  {channel_stats['ducks_shot']} ducks (incl. {channel_stats['golden_ducks']} golden) | best time: {channel_best} | avg react: {channel_avg:.3f}s  "
         stats_text += f"[Total Stats]  {total_ducks} ducks (incl. {total_golden} golden) | {total_xp} xp | best time: {total_best} | avg react: {avg_reaction:.3f}s"
 
-        # Show consumables with remaining counts
+        # Show consumables/effects with remaining counts or durations
         ap = channel_stats.get('ap_shots', 0)
         ex = channel_stats.get('explosive_shots', 0)
         bread = channel_stats.get('bread_uses', 0)
@@ -1454,22 +1454,57 @@ shop_ducks_detector = 50
         if bread > 0:
             br_label = f"Bread [{bread}/20]" if bread <= 20 else f"Bread [{bread}]"
             parts.append(br_label)
-        # Infrared detector remaining time
         now = time.time()
+        # Helper to format remaining time
+        def fmt_dur(until: float) -> str:
+            rem = int(until - now)
+            if rem <= 0:
+                return "0m"
+            if rem >= 3600:
+                h = rem // 3600
+                m = (rem % 3600) // 60
+                return f"{h}h{m:02d}m"
+            else:
+                m = rem // 60
+                s = rem % 60
+                return f"{m}m{s:02d}s"
+        # Timed effects
+        if channel_stats.get('grease_until', 0) > now:
+            parts.append(f"Grease [{fmt_dur(channel_stats['grease_until'])}]")
+        if channel_stats.get('silencer_until', 0) > now:
+            parts.append(f"Silencer [{fmt_dur(channel_stats['silencer_until'])}]")
+        if channel_stats.get('sunglasses_until', 0) > now:
+            parts.append(f"Sunglasses [{fmt_dur(channel_stats['sunglasses_until'])}]")
+        if channel_stats.get('clover_until', 0) > now:
+            bonus = int(channel_stats.get('clover_bonus', 0))
+            parts.append(f"Four-leaf clover +{bonus} [{fmt_dur(channel_stats['clover_until'])}]")
+        if channel_stats.get('mirror_until', 0) > now:
+            parts.append(f"Mirror [{fmt_dur(channel_stats['mirror_until'])}]")
+        if channel_stats.get('sand_until', 0) > now:
+            parts.append(f"Sand [{fmt_dur(channel_stats['sand_until'])}]")
+        if channel_stats.get('soaked_until', 0) > now:
+            parts.append(f"Soaked [{fmt_dur(channel_stats['soaked_until'])}]")
+        if channel_stats.get('life_insurance_until', 0) > now:
+            parts.append(f"Life insurance [{fmt_dur(channel_stats['life_insurance_until'])}]")
+        if channel_stats.get('liability_insurance_until', 0) > now:
+            parts.append(f"Liability insurance [{fmt_dur(channel_stats['liability_insurance_until'])}]")
+        if channel_stats.get('brush_until', 0) > now:
+            parts.append(f"Brush [{fmt_dur(channel_stats['brush_until'])}]")
+        # Ducks detector remaining time
+        if channel_stats.get('ducks_detector_until', 0) > now:
+            parts.append(f"Ducks Detector [{fmt_dur(channel_stats['ducks_detector_until'])}]")
+        # Infrared detector remaining time and uses
         infrared_until = channel_stats.get('infrared_until', 0)
         if infrared_until and infrared_until > now:
-            remaining = int(infrared_until - now)
-            hours = remaining // 3600
-            parts.append(f"Infrared Detector [{hours}/24h]")
-        # Infrared uses display
-        ir_uses = channel_stats.get('infrared_uses', 0)
-        if infrared_until and infrared_until > now and ir_uses > 0:
-            parts.append(f"Infrared Uses [{ir_uses}/6]")
-        if parts:
-            stats_text += "  |  Consumables: " + " | ".join(parts)
-        # Show sight if active (not really a consumable with count, but short-lived effect)
+            parts.append(f"Infrared Detector [{fmt_dur(infrared_until)}]")
+            ir_uses = channel_stats.get('infrared_uses', 0)
+            if ir_uses > 0:
+                parts.append(f"Infrared Uses [{ir_uses}/6]")
+        # Sight
         if channel_stats.get('sight_next_shot', False):
-            stats_text += "  |  Sight [next shot]"
+            parts.append("Sight [next shot]")
+        if parts:
+            stats_text += "  |  Effects: " + " | ".join(parts)
         
         self.send_notice(user, stats_text)
     
