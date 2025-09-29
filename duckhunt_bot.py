@@ -1733,7 +1733,14 @@ shop_ducks_detector = 50
         elif command == "nextduck":
             # Owner-only: report next scheduled spawn for this channel
             now = time.time()
-            next_time = self.channel_next_spawn.get(channel)
+            # Match schedule key by normalized channel to avoid trailing-space mismatch
+            norm = self.normalize_channel(channel)
+            key = None
+            for k in list(self.channel_next_spawn.keys()):
+                if self.normalize_channel(k) == norm:
+                    key = k
+                    break
+            next_time = self.channel_next_spawn.get(key) if key else None
             if not next_time:
                 self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
                 return
@@ -1872,7 +1879,13 @@ shop_ducks_detector = 50
             if not self.is_owner(user):
                 return
             now = time.time()
-            next_time = self.channel_next_spawn.get(channel)
+            norm = self.normalize_channel(channel)
+            key = None
+            for k in list(self.channel_next_spawn.keys()):
+                if self.normalize_channel(k) == norm:
+                    key = k
+                    break
+            next_time = self.channel_next_spawn.get(key) if key else None
             if not next_time:
                 self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
                 return
