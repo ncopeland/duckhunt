@@ -664,9 +664,10 @@ shop_ducks_detector = 50
         except Exception:
             pass
 
-    def schedule_channel_next_duck(self, channel: str):
+    def schedule_channel_next_duck(self, channel: str, allow_immediate: bool = True):
         """Schedule next duck spawn for a specific channel with pre-notice.
-        Hard guarantee: never allow gap > max_spawn; if overdue, schedule immediate.
+        Hard guarantee: never allow gap > max_spawn; if overdue, schedule immediate
+        unless allow_immediate is False (e.g., when probing via !nextduck).
         """
         now = time.time()
         last = self.channel_last_spawn.get(channel, 0)
@@ -677,8 +678,12 @@ shop_ducks_detector = 50
         else:
             latest_allowed = last + self.max_spawn
             if now > latest_allowed:
-                # Overdue -> force immediate spawn and then reschedule
-                due_time = now
+                # Overdue -> normally force immediate spawn, but avoid if probing
+                if allow_immediate:
+                    due_time = now
+                else:
+                    # Set a short delay to avoid !nextduck causing an instant spawn
+                    due_time = now + random.randint(10, 30)
             else:
                 # Still within window; pick a random time between now and latest_allowed
                 remaining_window = max(0, int(latest_allowed - now))
@@ -1860,10 +1865,13 @@ shop_ducks_detector = 50
         if not message.startswith('!'):
             return
         
-        # Ensure channel has a schedule; if missing, create one lazily
+        # Ensure channel has a schedule; if missing, create one lazily (but do not force immediate)
         try:
-            if not self.channel_next_spawn.get(channel):
-                self.schedule_channel_next_duck(channel)
+            if command_parts and command_parts[0].lower() == 'nextduck':
+                pass  # don't create schedule here; handled below without immediate spawn
+            else:
+                if not self.channel_next_spawn.get(channel):
+                    self.schedule_channel_next_duck(channel)
         except Exception as e:
             self.log_action(f"Lazy schedule init failed for {channel}: {e}")
 
@@ -1907,8 +1915,12 @@ shop_ducks_detector = 50
                     break
             next_time = self.channel_next_spawn.get(key) if key else None
             if not next_time:
-                self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
-                return
+                # Schedule a short-future spawn without forcing immediate
+                self.schedule_channel_next_duck(channel, allow_immediate=False)
+                next_time = self.channel_next_spawn.get(channel)
+                if not next_time:
+                    self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
+                    return
             remaining = max(0, int(next_time - now))
             minutes = remaining // 60
             seconds = remaining % 60
