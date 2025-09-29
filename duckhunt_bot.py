@@ -1730,6 +1730,17 @@ shop_ducks_detector = 50
             if channel in self.channels:
                 del self.channels[channel]
             self.send_notice(user, f"Parted {channel}")
+        elif command == "nextduck":
+            # Owner-only: report next scheduled spawn for this channel
+            now = time.time()
+            next_time = self.channel_next_spawn.get(channel)
+            if not next_time:
+                self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
+                return
+            remaining = max(0, int(next_time - now))
+            minutes = remaining // 60
+            seconds = remaining % 60
+            self.send_message(channel, f"{user} > Next duck in {minutes}m{seconds:02d}s.")
     
     def process_message(self, data):
         """Process incoming IRC message"""
@@ -1856,6 +1867,19 @@ shop_ducks_detector = 50
             self.handle_lastduck(user, channel)
         elif command == "duckhelp":
             self.handle_duckhelp(user, channel)
+        elif command == "nextduck":
+            # Owner-only, invoked in channel
+            if not self.is_owner(user):
+                return
+            now = time.time()
+            next_time = self.channel_next_spawn.get(channel)
+            if not next_time:
+                self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
+                return
+            remaining = max(0, int(next_time - now))
+            minutes = remaining // 60
+            seconds = remaining % 60
+            self.send_message(channel, f"{user} > Next duck in {minutes}m{seconds:02d}s.")
         elif command in ["spawnduck", "spawngold", "rearm", "disarm"]:
             self.handle_admin_command(user, channel, command, args)
 
