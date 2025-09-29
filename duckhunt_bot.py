@@ -695,6 +695,13 @@ shop_ducks_detector = 50
         self.channel_notice_sent[channel] = False
         self.log_action(f"Next duck scheduled for {channel} at {int(due_time - now)}s from now")
 
+    def can_spawn_duck(self, channel: str) -> bool:
+        """Return True if the channel is below max active ducks and can accept a new duck."""
+        norm_channel = self.normalize_channel(channel)
+        with self.ducks_lock:
+            current_count = len(self.active_ducks.get(norm_channel, []))
+            return current_count < self.max_ducks
+
     def notify_duck_detector(self):
         """Notify players with an active duck detector 60s before spawn, per channel."""
         now = time.time()
@@ -2139,6 +2146,10 @@ shop_ducks_detector = 50
                     now = time.time()
                     for ch, when in list(self.channel_next_spawn.items()):
                         if when and now >= when:
+                            # If channel can't accept a new duck yet, defer by 5-15s
+                            if not self.can_spawn_duck(ch):
+                                self.channel_next_spawn[ch] = now + random.randint(5, 15)
+                                continue
                             self.spawn_duck(ch)
                             # Clear consumed schedule entry to avoid double triggers
                             self.channel_next_spawn[ch] = None
@@ -2163,6 +2174,9 @@ shop_ducks_detector = 50
                         now = time.time()
                         for ch, when in list(self.channel_next_spawn.items()):
                             if when and now >= when:
+                                if not self.can_spawn_duck(ch):
+                                    self.channel_next_spawn[ch] = now + random.randint(5, 15)
+                                    continue
                                 self.spawn_duck(ch)
                                 self.channel_next_spawn[ch] = None
                     
