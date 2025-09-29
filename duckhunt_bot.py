@@ -392,6 +392,7 @@ shop_ducks_detector = 50
                 'total_reaction_time': 0.0,
                 'shots_fired': 0,
                 'last_duck_time': None,
+                'wild_fires': 0,
                 'confiscated': False,
                 'jammed': False,
                 'sabotaged': False,
@@ -456,6 +457,8 @@ shop_ducks_detector = 50
             stats['clover_bonus'] = 0
         if 'sight_next_shot' not in stats:
             stats['sight_next_shot'] = False
+        if 'wild_fires' not in stats:
+            stats['wild_fires'] = 0
         if 'mag_upgrade_level' not in stats:
             stats['mag_upgrade_level'] = 0
         if 'mag_capacity_level' not in stats:
@@ -789,6 +792,7 @@ shop_ducks_detector = 50
                 channel_stats['confiscated'] = True
                 prev_xp = channel_stats['xp']
                 channel_stats['xp'] = max(0, channel_stats['xp'] + total_pen)
+                channel_stats['wild_fires'] += 1
                 self.send_message(channel, self.pm(user, f"Luckily you missed, but what did you aim at ? There is no duck in the area...   [missed: {miss_pen} xp] [wild fire: {wild_pen} xp]   [GUN CONFISCATED: wild fire]"))
                 # Accidental shooting (wild fire): 50% chance to hit a random player
                 victim = None
@@ -1034,6 +1038,7 @@ shop_ducks_detector = 50
                 penalty = channel_stats.get('miss_penalty', -1)
                 if channel_stats.get('liability_insurance_until', 0) > time.time() and penalty < 0:
                     penalty = int(penalty / 2)
+                channel_stats['misses'] += 1
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
                 self.send_message(channel, self.pm(user, f"FRIEND     The duck seems distracted. Try again. [{penalty} XP]"))
                 self.save_player_data()
@@ -1422,7 +1427,12 @@ shop_ducks_detector = 50
         clip_size = channel_stats.get('clip_size', 10)
         mags_max = channel_stats.get('magazines_max', 2)
         stats_text += f"[Weapon]  ammo: {channel_stats['ammo']}/{clip_size} | mag.: {channel_stats['magazines']}/{mags_max} | jammed: {'yes' if channel_stats['jammed'] else 'no'} | confisc.: {'yes' if channel_stats['confiscated'] else 'no'}  "
-        stats_text += f"[Profile]  {channel_stats['xp']} xp | lvl {channel_level} | accuracy: {acc_pct}% | karma: {player['karma']:.2f}% good hunter  "
+        # Compute karma: proportion of good actions vs total actions
+        total_bad = channel_stats.get('misses', 0) + channel_stats.get('accidents', 0) + channel_stats.get('wild_fires', 0)
+        total_good = channel_stats.get('ducks_shot', 0) + channel_stats.get('befriended_ducks', 0)
+        total_actions = total_bad + total_good
+        karma_pct = 100.0 if total_actions == 0 else max(0.0, min(100.0, (total_good / total_actions) * 100.0))
+        stats_text += f"[Profile]  {channel_stats['xp']} xp | lvl {channel_level} | accuracy: {acc_pct}% | karma: {karma_pct:.2f}% good hunter  "
         channel_best = f"{channel_stats['best_time']:.3f}s" if channel_stats['best_time'] else "N/A"
         total_best = f"{best_time:.3f}s" if best_time else "N/A"
         channel_avg = channel_stats['total_reaction_time']/max(1,channel_stats['shots_fired'])
