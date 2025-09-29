@@ -10,6 +10,7 @@ License: GPLV2
 
 import socket
 import ssl
+import math
 import threading
 import time
 import re
@@ -654,6 +655,12 @@ shop_ducks_detector = 50
         # Schedule each joined channel independently
         for ch in list(self.channels.keys()):
             self.schedule_channel_next_duck(ch)
+        # Summary for visibility
+        try:
+            summary = {ch: int(self.channel_next_spawn.get(ch, 0) - time.time()) for ch in self.channels.keys()}
+            self.log_action(f"Per-channel schedules (s): {summary}")
+        except Exception:
+            pass
 
     def schedule_channel_next_duck(self, channel: str):
         """Schedule next duck spawn for a specific channel with pre-notice.
@@ -784,10 +791,9 @@ shop_ducks_detector = 50
                 miss_pen = channel_stats.get('miss_penalty', -1)
                 wild_pen = -2
                 if channel_stats.get('liability_insurance_until', 0) > now:
-                    if miss_pen < 0:
-                        miss_pen = int(miss_pen / 2)
+                    # Liability insurance should only reduce accident-related penalties (wildfire/ricochet), not plain miss
                     if wild_pen < 0:
-                        wild_pen = int(wild_pen / 2)
+                        wild_pen = math.floor(wild_pen / 2)
                 total_pen = miss_pen + wild_pen
                 channel_stats['confiscated'] = True
                 prev_xp = channel_stats['xp']
@@ -808,7 +814,7 @@ shop_ducks_detector = 50
                 if victim:
                     acc_pen = channel_stats.get('accident_penalty', -4)
                     if channel_stats.get('liability_insurance_until', 0) > now and acc_pen < 0:
-                        acc_pen = int(acc_pen / 2)
+                        acc_pen = math.floor(acc_pen / 2)
                     channel_stats['accidents'] += 1
                     channel_stats['xp'] = max(0, channel_stats['xp'] + acc_pen)
                     insured = channel_stats.get('life_insurance_until', 0) > now
@@ -819,7 +825,7 @@ shop_ducks_detector = 50
                     if vstats.get('mirror_until', 0) > now and not (channel_stats.get('sunglasses_until', 0) > now):
                         extra = -1
                         if channel_stats.get('liability_insurance_until', 0) > now:
-                            extra = int(extra / 2)
+                            extra = math.floor(extra / 2)
                         channel_stats['xp'] = max(0, channel_stats['xp'] + extra)
                         self.send_message(channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ''}"))
                     else:
@@ -870,9 +876,7 @@ shop_ducks_detector = 50
                 channel_stats['shots_fired'] += 1
                 channel_stats['misses'] += 1
                 penalty = channel_stats.get('miss_penalty', -1)
-                # Liability insurance halves penalties
-                if channel_stats.get('liability_insurance_until', 0) > time.time() and penalty < 0:
-                    penalty = int(penalty / 2)
+                # Liability insurance should not reduce plain miss penalty
                 prev_xp = channel_stats['xp']
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
                 self.send_message(channel, self.pm(user, f"*BANG*     You missed. [{penalty} xp]"))
@@ -891,7 +895,7 @@ shop_ducks_detector = 50
                     now2 = time.time()
                     acc_pen = channel_stats.get('accident_penalty', -4)
                     if channel_stats.get('liability_insurance_until', 0) > now2 and acc_pen < 0:
-                        acc_pen = int(acc_pen / 2)
+                        acc_pen = math.floor(acc_pen / 2)
                     channel_stats['accidents'] += 1
                     channel_stats['xp'] = max(0, channel_stats['xp'] + acc_pen)
                     insured = channel_stats.get('life_insurance_until', 0) > now2
@@ -903,7 +907,7 @@ shop_ducks_detector = 50
                     if vstats.get('mirror_until', 0) > now2 and not (channel_stats.get('sunglasses_until', 0) > now2):
                         extra = -1
                         if channel_stats.get('liability_insurance_until', 0) > now2:
-                            extra = int(extra / 2)
+                            extra = math.floor(extra / 2)
                         channel_stats['xp'] = max(0, channel_stats['xp'] + extra)
                         self.send_message(channel, self.pm(user, f"ACCIDENT     Your bullet ricochets into {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ' [GUN CONFISCATED: accident]'}"))
                     else:
