@@ -1034,10 +1034,8 @@ shop_ducks_detector = 50
             # self.send_message(channel, f"[DEBUG] Bef check - channel in ducks: {norm_channel in self.active_ducks}")
             if norm_channel not in self.active_ducks:
                 self.log_action(f"No ducks to befriend in {channel} - active_ducks keys: {list(self.active_ducks.keys())}")
-                # Apply small penalty for befriending when no ducks are present
-                penalty = channel_stats.get('miss_penalty', -1)
-                if channel_stats.get('liability_insurance_until', 0) > time.time() and penalty < 0:
-                    penalty = int(penalty / 2)
+                # Apply random penalty (-1 to -10) for befriending when no ducks are present
+                penalty = -random.randint(1, 10)
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
                 self.send_message(channel, self.pm(user, f"There are no ducks to befriend. [{penalty} XP]"))
                 self.save_player_data()
@@ -1053,9 +1051,8 @@ shop_ducks_detector = 50
                 self.send_message(channel, self.pm(user, "You are soaked and cannot befriend. Use spare clothes or wait."))
                 return
             if bef_roll > bef_chance:
-                penalty = channel_stats.get('miss_penalty', -1)
-                if channel_stats.get('liability_insurance_until', 0) > time.time() and penalty < 0:
-                    penalty = int(penalty / 2)
+                # Random penalty (-1 to -10) on failed befriend (duck distracted)
+                penalty = -random.randint(1, 10)
                 channel_stats['misses'] += 1
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
                 self.send_message(channel, self.pm(user, f"FRIEND     The duck seems distracted. Try again. [{penalty} XP]"))
@@ -1211,6 +1208,7 @@ shop_ducks_detector = 50
                 if channel_stats['xp'] < cost:
                     self.send_notice(user, f"You don't have enough XP in {channel}. You need {cost} xp.")
                     return
+                prev_xp = channel_stats['xp']
                 channel_stats['xp'] -= cost
                 
                 # Apply item effects
@@ -1407,6 +1405,10 @@ shop_ducks_detector = 50
                     # For other items, just show generic message
                     self.send_message(channel, self.pm(user, f"You purchased {item['name']} in exchange for {item['cost']} xp points."))
                 
+                # After any shop purchase that changes XP or capacities, re-apply level bonuses and announce level changes
+                self.apply_level_bonuses(channel_stats)
+                if channel_stats.get('xp', 0) != prev_xp:
+                    self.check_level_change(user, channel, channel_stats, prev_xp)
                 self.save_player_data()
                 
             except ValueError:
