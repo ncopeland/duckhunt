@@ -1763,8 +1763,17 @@ shop_ducks_detector = 50
                     break
             next_time = self.channel_next_spawn.get(key) if key else None
             if not next_time:
-                self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
-                return
+                # No schedule exists yet - create one but don't show it as immediate
+                self.schedule_channel_next_duck(channel, allow_immediate=False)
+                # Get the newly created schedule
+                for k in list(self.channel_next_spawn.keys()):
+                    if self.normalize_channel(k) == norm:
+                        key = k
+                        break
+                next_time = self.channel_next_spawn.get(key) if key else None
+                if not next_time:
+                    self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
+                    return
             remaining = max(0, int(next_time - now))
             minutes = remaining // 60
             seconds = remaining % 60
@@ -1874,9 +1883,12 @@ shop_ducks_detector = 50
         if not message.startswith('!'):
             return
         
+        command_parts = message[1:].split()
+        command = command_parts[0].lower() if command_parts else ""
+        
         # Ensure channel has a schedule; if missing, create one lazily (but do not force immediate)
         try:
-            if command_parts and command_parts[0].lower() == 'nextduck':
+            if command == 'nextduck':
                 pass  # don't create schedule here; handled below without immediate spawn
             else:
                 if not self.channel_next_spawn.get(channel):
@@ -1884,8 +1896,6 @@ shop_ducks_detector = 50
         except Exception as e:
             self.log_action(f"Lazy schedule init failed for {channel}: {e}")
 
-        command_parts = message[1:].split()
-        command = command_parts[0].lower()
         args = command_parts[1:] if len(command_parts) > 1 else []
         
         self.log_action(f"Detected {command} from {user} in {channel}")
@@ -1924,9 +1934,14 @@ shop_ducks_detector = 50
                     break
             next_time = self.channel_next_spawn.get(key) if key else None
             if not next_time:
-                # Schedule a short-future spawn without forcing immediate
+                # Only schedule if no schedule exists at all
                 self.schedule_channel_next_duck(channel, allow_immediate=False)
-                next_time = self.channel_next_spawn.get(channel)
+                # Get the newly created schedule using the same key lookup
+                for k in list(self.channel_next_spawn.keys()):
+                    if self.normalize_channel(k) == norm:
+                        key = k
+                        break
+                next_time = self.channel_next_spawn.get(key) if key else None
                 if not next_time:
                     self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
                     return
