@@ -802,7 +802,7 @@ shop_ducks_detector = 50
                     self.save_player_data()
                     return
                 # Otherwise apply classic-aligned penalties with liability reduction
-                miss_pen = channel_stats.get('miss_penalty', -1)
+                miss_pen = -random.randint(1, 5)  # Random penalty (-1 to -5) on miss
                 wild_pen = -2
                 if channel_stats.get('liability_insurance_until', 0) > now:
                     # Liability insurance should only reduce accident-related penalties (wildfire/ricochet), not plain miss
@@ -889,8 +889,8 @@ shop_ducks_detector = 50
             if hit_roll > hit_chance:
                 channel_stats['shots_fired'] += 1
                 channel_stats['misses'] += 1
-                penalty = channel_stats.get('miss_penalty', -1)
-                # Liability insurance should not reduce plain miss penalty
+                # Random penalty (-1 to -5) on miss
+                penalty = -random.randint(1, 5)
                 prev_xp = channel_stats['xp']
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
                 self.send_message(channel, self.pm(user, f"*BANG*     You missed. [{penalty} xp]"))
