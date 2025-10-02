@@ -2085,10 +2085,14 @@ shop_ducks_detector = 50
             owner_text = f" {victim}'s" if victim else " a"
             say(f"By searching the bushes, you find{owner_text} lost wallet! [+{xp} xp]")
         elif choice == "hunting_mag":
-            xp_options = [10, 20, 40, 50, 100]
-            xp = random.choice(xp_options)
-            channel_stats['xp'] += xp
-            say(f"By searching the bushes, you find a hunting magazine! [+{xp} xp]")
+            if channel_stats['magazines'] < mags_max:
+                channel_stats['magazines'] = min(mags_max, channel_stats['magazines'] + 1)
+                say(f"By searching the bushes, you find a hunting magazine! | Magazines: {channel_stats['magazines']}/{mags_max}")
+            else:
+                xp_options = [10, 20, 40, 50, 100]
+                xp = random.choice(xp_options)
+                channel_stats['xp'] += xp
+                say(f"By searching the bushes, you find a hunting magazine! You already have maximum magazines, so you gain {xp} XP instead.")
         elif choice == "clover":
             # If already active, convert to XP equal to shop price
             if channel_stats.get('clover_until', 0) > now:
