@@ -756,8 +756,6 @@ shop_ducks_detector = 50
                         self.unconfiscate_confiscated_in_channel(norm_channel)
                         # Update last spawn time for this channel
                         self.channel_last_spawn[norm_channel] = current_time
-                        # Schedule next duck for this channel
-                        self.schedule_channel_next_duck(norm_channel)
                 if remaining_ducks:
                     self.active_ducks[norm_channel] = remaining_ducks
                 else:
