@@ -62,18 +62,27 @@ class DuckHuntBot:
     
     def setup_networks(self):
         """Setup network connections from config"""
-        # For now, create a single network from the main config
-        # Later this can be extended to support multiple networks
-        main_config = {
-            'server': self.config.get('server', 'irc.rizon.net/6667'),
-            'ssl': self.config.get('ssl', 'off'),
-            'bot_nick': self.config.get('bot_nick', 'DuckHuntBot'),
-            'channel': self.config.get('channel', '#default'),
-            'perform': self.config.get('perform', ''),
-            'owner': self.config.get('owner', ''),
-            'admin': self.config.get('admin', ''),
-        }
-        self.networks['main'] = NetworkConnection('main', main_config)
+        # Look for network sections in config
+        network_sections = [section for section in self.config.sections() if section.startswith('network:')]
+        
+        if network_sections:
+            # Multi-network configuration
+            for section in network_sections:
+                network_name = section.split(':', 1)[1]  # Extract name after 'network:'
+                network_config = dict(self.config[section])
+                self.networks[network_name] = NetworkConnection(network_name, network_config)
+        else:
+            # Fallback to single network from DEFAULT section
+            main_config = {
+                'server': self.config.get('server', 'irc.rizon.net/6667'),
+                'ssl': self.config.get('ssl', 'off'),
+                'bot_nick': self.config.get('bot_nick', 'DuckHuntBot'),
+                'channel': self.config.get('channel', '#default'),
+                'perform': self.config.get('perform', ''),
+                'owner': self.config.get('owner', ''),
+                'admin': self.config.get('admin', ''),
+            }
+            self.networks['main'] = NetworkConnection('main', main_config)
         
         # Game settings
         self.min_spawn = int(self.config.get('min_spawn', 600))
@@ -336,31 +345,31 @@ shop_ducks_detector = 50
         await self.send_network(network, f"USER DuckHuntBot 0 * :Duck Hunt Game Bot v{self.version}")
         await self.send_network(network, f"NICK {network.nick}")
     
-    def complete_registration(self):
+    async def complete_registration(self, network: NetworkConnection):
         """Complete IRC registration by joining channels and running perform commands"""
-        if hasattr(self, 'registration_complete'):
+        if hasattr(network, 'registration_complete'):
             return
         
-        self.registration_complete = True
-        self.log_action("Registration complete, joining channels and running perform commands")
+        network.registration_complete = True
+        self.log_action(f"Registration complete for {network.name}, joining channels and running perform commands")
         
         # Join channels
-        channels = self.config['channel'].split(',')
+        channels = network.config['channel'].split(',')
         for channel in channels:
             channel = channel.strip()
             if channel:
-                self.send(f"JOIN {channel}")
-                self.channels[channel] = set()
+                await self.send_network(network, f"JOIN {channel}")
+                network.channels[channel] = set()
         
         # Perform commands
-        if 'perform' in self.config:
-            perform_commands = self.config['perform'].split(';')
+        if 'perform' in network.config:
+            perform_commands = network.config['perform'].split(';')
             for cmd in perform_commands:
                 if cmd.strip():
-                    self.send(cmd.strip())
+                    await self.send_network(network, cmd.strip())
         
         # Schedule first duck spawn per channel
-        self.schedule_next_duck()
+        await self.schedule_next_duck(network)
     
     def is_owner(self, user):
         """Check if user is owner"""
@@ -676,25 +685,25 @@ shop_ducks_detector = 50
                 pass
             self.schedule_channel_next_duck(channel)
     
-    def schedule_next_duck(self):
-        """Legacy global scheduler: keep behavior by scheduling all channels."""
+    async def schedule_next_duck(self, network: NetworkConnection):
+        """Schedule next duck spawn for all channels on a network."""
         # Schedule each joined channel independently
-        for ch in list(self.channels.keys()):
-            self.schedule_channel_next_duck(ch)
+        for ch in list(network.channels.keys()):
+            await self.schedule_channel_next_duck(network, ch)
         # Summary for visibility
         try:
-            summary = {ch: int(self.channel_next_spawn.get(ch, 0) - time.time()) for ch in self.channels.keys()}
-            self.log_action(f"Per-channel schedules (s): {summary}")
+            summary = {ch: int(network.channel_next_spawn.get(ch, 0) - time.time()) for ch in network.channels.keys()}
+            self.log_action(f"Per-channel schedules for {network.name} (s): {summary}")
         except Exception:
             pass
 
-    def schedule_channel_next_duck(self, channel: str, allow_immediate: bool = True):
+    async def schedule_channel_next_duck(self, network: NetworkConnection, channel: str, allow_immediate: bool = True):
         """Schedule next duck spawn for a specific channel with pre-notice.
         Hard guarantee: never allow gap > max_spawn; if overdue, schedule immediate
         unless allow_immediate is False (e.g., when probing via !nextduck).
         """
         now = time.time()
-        last = self.channel_last_spawn.get(channel, 0)
+        last = network.channel_last_spawn.get(channel, 0)
         # If we've never spawned, schedule randomly within window
         if last == 0:
             spawn_delay = random.randint(self.min_spawn, self.max_spawn)
@@ -714,10 +723,10 @@ shop_ducks_detector = 50
                 # Ensure at least 1s
                 spawn_delay = random.randint(1, max(1, remaining_window))
                 due_time = now + spawn_delay
-        self.channel_next_spawn[channel] = due_time
-        self.channel_pre_notice[channel] = max(now, due_time - 60)
-        self.channel_notice_sent[channel] = False
-        self.log_action(f"Next duck scheduled for {channel} at {int(due_time - now)}s from now")
+        network.channel_next_spawn[channel] = due_time
+        network.channel_pre_notice[channel] = max(now, due_time - 60)
+        network.channel_notice_sent[channel] = False
+        self.log_action(f"Next duck scheduled for {channel} on {network.name} at {int(due_time - now)}s from now")
 
     def can_spawn_duck(self, channel: str) -> bool:
         """Return True if the channel is below max active ducks and can accept a new duck."""
@@ -2197,30 +2206,30 @@ shop_ducks_detector = 50
                             network.message_count += 1
                 
                 # Check for MOTD timeout (30 seconds) or message limit (100 messages)
-                if self.registered and hasattr(self, 'motd_start_time') and not hasattr(self, 'registration_complete') and not self.motd_timeout_triggered:
-                    elapsed = time.time() - self.motd_start_time
-                    if elapsed > 30 or self.message_count > 100:
-                        self.log_action(f"MOTD timeout ({elapsed:.1f}s, {self.message_count} messages) - completing registration")
-                        self.motd_timeout_triggered = True
-                        self.complete_registration()
+                if network.registered and hasattr(network, 'motd_start_time') and not hasattr(network, 'registration_complete') and not network.motd_timeout_triggered:
+                    elapsed = time.time() - network.motd_start_time
+                    if elapsed > 30 or network.message_count > 100:
+                        self.log_action(f"MOTD timeout for {network.name} ({elapsed:.1f}s, {network.message_count} messages) - completing registration")
+                        network.motd_timeout_triggered = True
+                        await self.complete_registration(network)
                     elif elapsed > 25:  # Debug logging
-                        self.log_action(f"MOTD timeout approaching: {elapsed:.1f}s elapsed ({self.message_count} messages)")
+                        self.log_action(f"MOTD timeout approaching for {network.name}: {elapsed:.1f}s elapsed ({network.message_count} messages)")
                 
                 # Per-channel pre-spawn notices and spawns (only after registration)
-                if hasattr(self, 'registration_complete'):
+                if hasattr(network, 'registration_complete'):
                     # Send any due pre-notices
-                    await self.notify_duck_detector()
+                    await self.notify_duck_detector(network)
                     # Perform any due spawns per channel
                     now = time.time()
-                    for ch, when in list(self.channel_next_spawn.items()):
+                    for ch, when in list(network.channel_next_spawn.items()):
                         if when and now >= when:
                             # If channel can't accept a new duck yet, defer by 5-15s
                             if not await self.can_spawn_duck(ch):
-                                self.channel_next_spawn[ch] = now + random.randint(5, 15)
+                                network.channel_next_spawn[ch] = now + random.randint(5, 15)
                                 continue
-                            await self.spawn_duck(ch)
+                            await self.spawn_duck(network, ch)
                             # Clear consumed schedule entry to avoid double triggers
-                            self.channel_next_spawn[ch] = None
+                            network.channel_next_spawn[ch] = None
                 
                 # Duck despawn is handled in the exception handler with proper throttling
                 
