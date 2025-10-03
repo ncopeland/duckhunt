@@ -318,6 +318,34 @@ shop_ducks_detector = 50
         """Prefix a message with the player's name as per UX convention."""
         return f"{user} - {message}"
     
+    # IRC Color codes
+    def colorize(self, text: str, color: str = None, bg_color: str = None, bold: bool = False) -> str:
+        """Add IRC color codes to text"""
+        if not color and not bg_color and not bold:
+            return text
+        
+        codes = []
+        if bold:
+            codes.append('\x02')  # Bold
+        if color:
+            color_codes = {
+                'white': '00', 'black': '01', 'blue': '02', 'green': '03', 'red': '04',
+                'brown': '05', 'purple': '06', 'orange': '07', 'yellow': '08', 'lime': '09',
+                'cyan': '10', 'light_cyan': '11', 'light_blue': '12', 'pink': '13', 'grey': '14', 'light_grey': '15'
+            }
+            if color in color_codes:
+                codes.append(f'\x03{color_codes[color]}')
+        if bg_color:
+            bg_codes = {
+                'white': '00', 'black': '01', 'blue': '02', 'green': '03', 'red': '04',
+                'brown': '05', 'purple': '06', 'orange': '07', 'yellow': '08', 'lime': '09',
+                'cyan': '10', 'light_cyan': '11', 'light_blue': '12', 'pink': '13', 'grey': '14', 'light_grey': '15'
+            }
+            if bg_color in bg_codes:
+                codes.append(f',{bg_codes[bg_color]}')
+        
+        return ''.join(codes) + text + '\x0f'  # \x0f resets all formatting
+    
     async def connect_network(self, network: NetworkConnection):
         """Connect to IRC server for a specific network"""
         server_parts = network.config['server'].split('/')
@@ -630,7 +658,7 @@ shop_ducks_detector = 50
             'accident_penalty': -abs(accpen),
         }
 
-    def check_level_change(self, user: str, channel: str, stats: dict, prev_xp: int) -> None:
+    async def check_level_change(self, user: str, channel: str, stats: dict, prev_xp: int, network: NetworkConnection) -> None:
         """Announce promotion/demotion when XP crosses thresholds."""
         prev_level = min(50, (prev_xp // 100) + 1)
         new_level = min(50, (stats.get('xp', 0) // 100) + 1)
@@ -642,9 +670,9 @@ shop_ducks_detector = 50
         ]
         title = titles[min(new_level-1, len(titles)-1)] if new_level > 0 else "unknown"
         if new_level > prev_level:
-            self.send_message(channel, self.pm(user, f"PROMOTION     You are promoted to level {new_level} ({title}) in {channel}."))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('PROMOTION', 'green', bold=True)}     {self.colorize(f'You are promoted to level {new_level} ({title}) in {channel}.', 'green')}"))
         else:
-            self.send_message(channel, self.pm(user, f"DEMOTION     You are demoted to level {new_level} ({title}) in {channel}."))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('DEMOTION', 'red', bold=True)}     {self.colorize(f'You are demoted to level {new_level} ({title}) in {channel}.', 'red')}"))
         stats['level'] = new_level
 
     def apply_level_bonuses(self, channel_stats):
@@ -704,6 +732,10 @@ shop_ducks_detector = 50
         self.log_action(f"Spawned {'golden' if is_golden else 'regular'} duck in {channel} - spawn_time: {duck['spawn_time']}")
         
         duck_art = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· \\_O<   QUACK"
+        if is_golden:
+            duck_art = self.colorize(duck_art, 'yellow', bold=True)
+        else:
+            duck_art = self.colorize(duck_art, 'brown')
         
         await self.send_message(network, channel, duck_art)
         
@@ -832,7 +864,7 @@ shop_ducks_detector = 50
                                 target_network = net
                                 break
                         if target_network:
-                            await self.send_message(target_network, norm_channel, "The duck flies away.     ·°'`'°-.,¸¸.·°'`")
+                            await self.send_message(target_network, norm_channel, self.colorize("The duck flies away.     ·°'`'°-.,¸¸.·°'`", 'grey'))
                         # Quietly unconfiscate all on this channel when a duck despawns
                         self.unconfiscate_confiscated_in_channel(norm_channel)
                         # Update last spawn time for this channel
@@ -843,7 +875,7 @@ shop_ducks_detector = 50
                 else:
                     del self.active_ducks[norm_channel]
     
-    def handle_bang(self, user, channel):
+    async def handle_bang(self, user, channel, network: NetworkConnection):
         """Handle !bang command"""
         if not self.check_authentication(user):
             self.send_message(channel, self.pm(user, "You must be authenticated to play."))
@@ -897,7 +929,7 @@ shop_ducks_detector = 50
                 prev_xp = channel_stats['xp']
                 channel_stats['xp'] = max(0, channel_stats['xp'] + total_pen)
                 channel_stats['wild_fires'] += 1
-                self.send_message(channel, self.pm(user, f"Luckily you missed, but what did you aim at ? There is no duck in the area...   [missed: {miss_pen} xp] [wild fire: {wild_pen} xp]   [GUN CONFISCATED: wild fire]"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('Luckily you missed, but what did you aim at ? There is no duck in the area...', 'red')}   {self.colorize(f'[missed: {miss_pen} xp]', 'red')} {self.colorize(f'[wild fire: {wild_pen} xp]', 'red')}   {self.colorize('[GUN CONFISCATED: wild fire]', 'red', bold=True)}"))
                 # Accidental shooting (wild fire): 50% chance to hit a random player
                 victim = None
                 if channel in self.channels and self.channels[channel]:
@@ -928,7 +960,7 @@ shop_ducks_detector = 50
                         self.send_message(channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ''}"))
                     else:
                         self.send_message(channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ''}"))
-                self.check_level_change(user, channel, channel_stats, prev_xp)
+                await self.check_level_change(user, channel, channel_stats, prev_xp, network)
                 self.save_player_data()
                 return
             
@@ -977,7 +1009,7 @@ shop_ducks_detector = 50
                 penalty = -random.randint(1, 5)
                 prev_xp = channel_stats['xp']
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
-                self.send_message(channel, self.pm(user, f"*BANG*     You missed. [{penalty} xp]"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You missed.', 'red')} {self.colorize(f'[{penalty} xp]', 'red')}"))
                 # Ricochet accident: 20% chance to hit a random player
                 victim = None
                 if channel in self.channels and self.channels[channel]:
@@ -1007,10 +1039,10 @@ shop_ducks_detector = 50
                         if channel_stats.get('liability_insurance_until', 0) > now2:
                             extra = math.floor(extra / 2)
                         channel_stats['xp'] = max(0, channel_stats['xp'] + extra)
-                        self.send_message(channel, self.pm(user, f"ACCIDENT     Your bullet ricochets into {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ' [GUN CONFISCATED: accident]'}"))
+                        await self.send_message(network, channel, self.pm(user, f"{self.colorize('ACCIDENT', 'red', bold=True)}     {self.colorize('Your bullet ricochets into', 'red')} {victim}! {self.colorize(f'[accident: {acc_pen} xp]', 'red')} {self.colorize(f'[mirror glare: {extra} xp]', 'purple')}{self.colorize(' [INSURED: no confiscation]', 'green') if insured else self.colorize(' [GUN CONFISCATED: accident]', 'red', bold=True)}"))
                     else:
-                        self.send_message(channel, self.pm(user, f"ACCIDENT     Your bullet ricochets into {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ' [GUN CONFISCATED: accident]'}"))
-                self.check_level_change(user, channel, channel_stats, prev_xp)
+                        await self.send_message(network, channel, self.pm(user, f"{self.colorize('ACCIDENT', 'red', bold=True)}     {self.colorize('Your bullet ricochets into', 'red')} {victim}! {self.colorize(f'[accident: {acc_pen} xp]', 'red')}{self.colorize(' [INSURED: no confiscation]', 'green') if insured else self.colorize(' [GUN CONFISCATED: accident]', 'red', bold=True)}"))
+                await self.check_level_change(user, channel, channel_stats, prev_xp, network)
                 self.save_player_data()
                 return
 
@@ -1030,7 +1062,7 @@ shop_ducks_detector = 50
             # Reveal golden duck on first hit
             if target_duck['golden'] and not target_duck.get('revealed', False):
                 target_duck['revealed'] = True
-                self.send_message(channel, "   * GOLDEN DUCK DETECTED *")
+                await self.send_message(network, channel, self.colorize("   * GOLDEN DUCK DETECTED *", 'yellow', bold=True))
             
             # Remove if dead
             if duck_killed and norm_channel in self.active_ducks:
@@ -1085,20 +1117,20 @@ shop_ducks_detector = 50
             level_titles = ["tourist", "noob", "duck hater", "duck hunter", "member of the Comitee Against Ducks", 
                           "duck pest", "duck hassler", "duck killer", "duck demolisher", "duck disassembler"]
             title = level_titles[min(new_level-1, len(level_titles)-1)]
-            self.send_message(channel, self.pm(user, f"*BANG*     You shot down the duck in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. You are promoted to level {new_level} ({title}).     \\_X<   *KWAK*   [{xp_gain} xp]{item_display}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. You are promoted to level {new_level} ({title}).     {self.colorize('\\_X<   *KWAK*', 'red')}   {self.colorize(f'[{xp_gain} xp]', 'green')}{item_display}"))
         else:
             if duck_killed:
                 sign = '+' if xp_gain > 0 else ''
-                self.send_message(channel, self.pm(user, f"*BANG*     You shot down the duck in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}.     \\_X<   *KWAK*   [{sign}{xp_gain} xp]{item_display}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}.     {self.colorize('\\_X<   *KWAK*', 'red')}   {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
             else:
                 remaining = max(0, target_duck['health'])
                 if target_duck['golden']:
-                    self.send_message(channel, self.pm(user, f"*BANG*     The golden duck survived ! Try again.   \\_O<  [life -{damage}]"))
+                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('The golden duck survived ! Try again.', 'yellow', bold=True)}   {self.colorize('\\_O<', 'yellow')}  {self.colorize(f'[life -{damage}]', 'red')}"))
                 else:
-                    self.send_message(channel, self.pm(user, f"*BANG*     You hit the duck! Remaining health: {remaining}."))
+                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You hit the duck!', 'orange')} Remaining health: {remaining}."))
         # Announce promotion/demotion if level changed (any XP change path)
         if xp_gain != 0:
-            self.check_level_change(user, channel, channel_stats, prev_xp)
+            await self.check_level_change(user, channel, channel_stats, prev_xp, network)
         
         # Random weighted loot drop (10% chance) on kill only
         if duck_killed and random.random() < 0.10:
@@ -1107,7 +1139,7 @@ shop_ducks_detector = 50
         self.save_player_data()
         self.schedule_next_duck()
     
-    def handle_bef(self, user, channel):
+    async def handle_bef(self, user, channel, network: NetworkConnection):
         """Handle !bef (befriend) command"""
         if not self.check_authentication(user):
             self.send_message(channel, self.pm(user, "You must be authenticated to play."))
@@ -1126,7 +1158,7 @@ shop_ducks_detector = 50
                 # Apply random penalty (-1 to -10) for befriending when no ducks are present
                 penalty = -random.randint(1, 10)
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
-                self.send_message(channel, self.pm(user, f"There are no ducks to befriend. [{penalty} XP]"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('There are no ducks to befriend.', 'red')} {self.colorize(f'[{penalty} XP]', 'red')}"))
                 self.save_player_data()
                 return
             
@@ -1160,7 +1192,7 @@ shop_ducks_detector = 50
             # Reveal golden duck on first befriend attempt
             if duck['golden'] and not duck.get('revealed', False):
                 duck['revealed'] = True
-                self.send_message(channel, "   * GOLDEN DUCK DETECTED *")
+                await self.send_message(network, channel, self.colorize("   * GOLDEN DUCK DETECTED *", 'yellow', bold=True))
             
             # Remove the duck if fully befriended
             if bef_killed:
@@ -1189,18 +1221,18 @@ shop_ducks_detector = 50
                 response += "GOLDEN DUCK"
             else:
                 response += "DUCK"
-            response += f" was befriended!   \\_0< QUAACK!   [BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}] [+{xp_gained} xp]"
-            self.send_message(channel, self.pm(user, response))
+            response += f" was befriended!   {self.colorize('\\_0< QUAACK!', 'green')}   {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize(f'[+{xp_gained} xp]', 'green')}"
+            await self.send_message(network, channel, self.pm(user, response))
             self.log_action(f"{user} befriended a {'golden ' if duck['golden'] else ''}duck in {channel}")
-            self.check_level_change(user, channel, channel_stats, prev_xp)
+            await self.check_level_change(user, channel, channel_stats, prev_xp, network)
         else:
             remaining = max(0, duck['health'])
-            self.send_message(channel, self.pm(user, f"FRIEND     You comfort the duck. Remaining friendliness needed: {remaining}."))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'green', bold=True)}     {self.colorize('You comfort the duck.', 'green')} Remaining friendliness needed: {remaining}."))
         
         self.save_player_data()
         self.schedule_next_duck()
     
-    def handle_reload(self, user, channel):
+    async def handle_reload(self, user, channel, network: NetworkConnection):
         """Handle !reload command"""
         if not self.check_authentication(user):
             return
@@ -1231,15 +1263,15 @@ shop_ducks_detector = 50
                 channel_stats['ammo'] = clip_size
                 channel_stats['magazines'] -= 1
                 mags_max = channel_stats.get('magazines_max', 2)
-                self.send_message(channel, self.pm(user, f"*CLACK CLACK*     You reload. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK CLACK*', 'blue', bold=True)}     {self.colorize('You reload.', 'blue')} | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         else:
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            self.send_message(channel, self.pm(user, f"Your gun doesn't need to be reloaded. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('Your gun doesn\'t need to be reloaded.', 'grey')} | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         
         self.save_player_data()
     
-    def handle_shop(self, user, channel, args):
+    async def handle_shop(self, user, channel, args, network: NetworkConnection):
         """Handle !shop command"""
         if not self.check_authentication(user):
             return
@@ -1335,7 +1367,7 @@ shop_ducks_detector = 50
                         if switched:
                             self.send_message(channel, self.pm(user, f"You switched to AP ammo. Next 20 shots are AP. [-{cost} XP]"))
                         else:
-                            self.send_message(channel, self.pm(user, f"You purchased AP ammo. Next 20 shots deal extra damage to golden ducks. [-{cost} XP]"))
+                            await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased AP ammo.', 'green')} Next 20 shots deal extra damage to golden ducks. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 4:  # Explosive ammo: next 20 shots do +1 dmg vs golden and boost accuracy
                     ap = channel_stats.get('ap_shots', 0)
                     ex = channel_stats.get('explosive_shots', 0)
@@ -1349,14 +1381,14 @@ shop_ducks_detector = 50
                         if switched:
                             self.send_message(channel, self.pm(user, f"You switched to explosive ammo. Next 20 shots are explosive. [-{cost} XP]"))
                         else:
-                            self.send_message(channel, self.pm(user, f"You purchased explosive ammo. Next 20 shots deal extra damage to golden ducks. [-{cost} XP]"))
+                            await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased explosive ammo.', 'green')} Next 20 shots deal extra damage to golden ducks. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 7:  # Sight: next shot accuracy boost; cannot stack
                     if channel_stats.get('sight_next_shot', False):
                         self.send_notice(user, "Sight already mounted for your next shot. Use it before buying more.")
                         channel_stats['xp'] += item['cost']
                     else:
                         channel_stats['sight_next_shot'] = True
-                        self.send_message(channel, self.pm(user, f"You purchased a sight. Your next shot will be more accurate. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased a sight.', 'green')} Your next shot will be more accurate. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 11:  # Sunglasses: 24h protection against mirror / reduce accident penalty
                     channel_stats['sunglasses_until'] = max(channel_stats.get('sunglasses_until', 0), time.time() + 24*3600)
                     self.send_message(channel, self.pm(user, f"You put on sunglasses for 24h. You're protected against mirror glare. [-{cost} XP]"))
@@ -1465,7 +1497,7 @@ shop_ducks_detector = 50
                         channel_stats['xp'] += item['cost']
                     else:
                         channel_stats['bread_uses'] = 20
-                        self.send_message(channel, self.pm(user, f"You purchased bread. Next 20 befriends are more effective. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased bread.', 'green')} Next 20 befriends are more effective. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 5:  # Repurchase confiscated gun
                     if channel_stats['confiscated']:
                         channel_stats['confiscated'] = False
@@ -1497,12 +1529,12 @@ shop_ducks_detector = 50
                         item['cost'] = min(1000, item['cost'] + 200)
                 else:
                     # For other items, just show generic message
-                    self.send_message(channel, self.pm(user, f"You purchased {item['name']}. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"{self.colorize(f'You purchased {item['name']}.', 'green')} {self.colorize(f'[-{cost} XP]', 'red')}"))
                 
                 # After any shop purchase that changes XP or capacities, re-apply level bonuses and announce level changes
                 self.apply_level_bonuses(channel_stats)
                 if channel_stats.get('xp', 0) != prev_xp:
-                    self.check_level_change(user, channel, channel_stats, prev_xp)
+                    await self.check_level_change(user, channel, channel_stats, prev_xp, network)
                 self.save_player_data()
                 
             except ValueError:
@@ -2000,13 +2032,13 @@ shop_ducks_detector = 50
             command = "spawngold"
         
         if command == "bang":
-            self.handle_bang(user, channel)
+            await self.handle_bang(user, channel, network)
         elif command == "bef":
-            self.handle_bef(user, channel)
+            await self.handle_bef(user, channel, network)
         elif command == "reload":
-            self.handle_reload(user, channel)
+            await self.handle_reload(user, channel, network)
         elif command == "shop":
-            self.handle_shop(user, channel, args)
+            await self.handle_shop(user, channel, args, network)
         elif command == "duckstats":
             self.handle_duckstats(user, channel, args)
         elif command == "topduck":
