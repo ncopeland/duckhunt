@@ -642,13 +642,12 @@ shop_ducks_detector = 50
             self.log_action(f"Duck spawned in {channel} - spawn_time: {duck['spawn_time']}")
             self.log_action(f"[DEBUG] Active_ducks state after spawn: { {ch: len(lst) for ch,lst in self.active_ducks.items()} }")
         
-        # Mark last spawn time for guarantees
-        try:
-            self.channel_last_spawn[channel] = time.time()
-        except Exception:
-            pass
-        # Schedule next spawn for this channel (unless called manually with schedule=False)
+        # Mark last spawn time for guarantees (only for automatic spawns)
         if schedule:
+            try:
+                self.channel_last_spawn[channel] = time.time()
+            except Exception:
+                pass
             self.schedule_channel_next_duck(channel)
     
     def schedule_next_duck(self):
