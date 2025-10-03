@@ -84,7 +84,7 @@ class DuckHuntBot:
             }
             self.networks['main'] = NetworkConnection('main', main_config)
         
-        # Game settings
+        # Default game settings (fallback for backward compatibility)
         self.min_spawn = int(self.config.get('min_spawn', 600))
         self.max_spawn = int(self.config.get('max_spawn', 1800))
         self.gold_ratio = float(self.config.get('gold_ratio', 0.1))
@@ -393,6 +393,32 @@ shop_ducks_detector = 50
         """Check if user is authenticated (cached)"""
         return user.lower() in self.authenticated_users
     
+    def get_network_setting(self, network: NetworkConnection, setting: str, default=None):
+        """Get a setting value for a specific network, with fallback to global config"""
+        if network and setting in network.config:
+            return network.config[setting]
+        return self.config.get(setting, default)
+    
+    def get_network_min_spawn(self, network: NetworkConnection):
+        """Get min_spawn for a specific network"""
+        return int(self.get_network_setting(network, 'min_spawn', self.min_spawn))
+    
+    def get_network_max_spawn(self, network: NetworkConnection):
+        """Get max_spawn for a specific network"""
+        return int(self.get_network_setting(network, 'max_spawn', self.max_spawn))
+    
+    def get_network_gold_ratio(self, network: NetworkConnection):
+        """Get gold_ratio for a specific network"""
+        return float(self.get_network_setting(network, 'gold_ratio', self.gold_ratio))
+    
+    def get_network_max_ducks(self, network: NetworkConnection):
+        """Get max_ducks for a specific network"""
+        return int(self.get_network_setting(network, 'max_ducks', self.max_ducks))
+    
+    def get_network_despawn_time(self, network: NetworkConnection):
+        """Get despawn_time for a specific network"""
+        return int(self.get_network_setting(network, 'despawn_time', self.despawn_time))
+    
     def check_authentication(self, user):
         """Check user authentication via WHOIS"""
         if self.is_authenticated(user):
@@ -644,23 +670,25 @@ shop_ducks_detector = 50
                 if self.normalize_channel(ch_key) == target_norm and stats.get('confiscated'):
                     stats['confiscated'] = False
     
-    def spawn_duck(self, channel=None, schedule: bool = True):
+    async def spawn_duck(self, network: NetworkConnection, channel=None, schedule: bool = True):
         """Spawn a new duck in a specific channel. If schedule is False, do not reset the auto timer."""
         if channel is None:
-            # Pick a random channel
-            channels = [ch.strip() for ch in self.config.get('channel', '#default').split(',') if ch.strip()]
+            # Pick a random channel from the network
+            channels = [ch.strip() for ch in network.config.get('channel', '#default').split(',') if ch.strip()]
             if not channels:
                 return
             channel = random.choice(channels)
         
-        with self.ducks_lock:
+        async with self.ducks_lock:
             norm_channel = self.normalize_channel(channel)
             if norm_channel not in self.active_ducks:
                 self.active_ducks[norm_channel] = []
-            # Enforce max_ducks from config
-            if len(self.active_ducks[norm_channel]) >= self.max_ducks:
+            # Enforce max_ducks from network config
+            max_ducks = self.get_network_max_ducks(network)
+            if len(self.active_ducks[norm_channel]) >= max_ducks:
                 return
-            is_golden = random.random() < self.gold_ratio
+            gold_ratio = self.get_network_gold_ratio(network)
+            is_golden = random.random() < gold_ratio
             duck = {
                 'golden': is_golden,
                 'health': 5 if is_golden else 1,
@@ -677,21 +705,21 @@ shop_ducks_detector = 50
         
         duck_art = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· \\_O<   QUACK"
         
-        self.send_message(channel, duck_art)
+        await self.send_message(network, channel, duck_art)
         
         # Check active_ducks state after sending messages
-        with self.ducks_lock:
+        async with self.ducks_lock:
             # self.send_message(channel, f"[DEBUG] Duck stored in {channel} - spawn_time: {duck['spawn_time']}")
-            self.log_action(f"Duck spawned in {channel} - spawn_time: {duck['spawn_time']}")
+            self.log_action(f"Duck spawned in {channel} on {network.name} - spawn_time: {duck['spawn_time']}")
             self.log_action(f"[DEBUG] Active_ducks state after spawn: { {ch: len(lst) for ch,lst in self.active_ducks.items()} }")
         
         # Mark last spawn time for guarantees (only for automatic spawns)
         if schedule:
             try:
-                self.channel_last_spawn[channel] = time.time()
+                network.channel_last_spawn[channel] = time.time()
             except Exception:
                 pass
-            self.schedule_channel_next_duck(channel)
+            await self.schedule_channel_next_duck(network, channel)
     
     async def schedule_next_duck(self, network: NetworkConnection):
         """Schedule next duck spawn for all channels on a network."""
@@ -712,12 +740,15 @@ shop_ducks_detector = 50
         """
         now = time.time()
         last = network.channel_last_spawn.get(channel, 0)
+        min_spawn = self.get_network_min_spawn(network)
+        max_spawn = self.get_network_max_spawn(network)
+        
         # If we've never spawned, schedule randomly within window
         if last == 0:
-            spawn_delay = random.randint(self.min_spawn, self.max_spawn)
+            spawn_delay = random.randint(min_spawn, max_spawn)
             due_time = now + spawn_delay
         else:
-            latest_allowed = last + self.max_spawn
+            latest_allowed = last + max_spawn
             if now > latest_allowed:
                 # Overdue -> normally force immediate spawn, but avoid if probing
                 if allow_immediate:
@@ -736,23 +767,24 @@ shop_ducks_detector = 50
         network.channel_notice_sent[channel] = False
         self.log_action(f"Next duck scheduled for {channel} on {network.name} at {int(due_time - now)}s from now")
 
-    def can_spawn_duck(self, channel: str) -> bool:
+    async def can_spawn_duck(self, channel: str, network: NetworkConnection = None) -> bool:
         """Return True if the channel is below max active ducks and can accept a new duck."""
         norm_channel = self.normalize_channel(channel)
-        with self.ducks_lock:
+        max_ducks = self.get_network_max_ducks(network) if network else self.max_ducks
+        async with self.ducks_lock:
             current_count = len(self.active_ducks.get(norm_channel, []))
-            return current_count < self.max_ducks
+            return current_count < max_ducks
 
-    def notify_duck_detector(self):
+    async def notify_duck_detector(self, network: NetworkConnection):
         """Notify players with an active duck detector 60s before spawn, per channel."""
         now = time.time()
-        for channel in list(self.channels.keys()):
-            pre = self.channel_pre_notice.get(channel)
+        for channel in list(network.channels.keys()):
+            pre = network.channel_pre_notice.get(channel)
             if pre is None:
                 continue
-            if not self.channel_notice_sent.get(channel, False) and now >= pre:
+            if not network.channel_notice_sent.get(channel, False) and now >= pre:
                 # Notify each user in the channel with active detector
-                for user in list(self.channels.get(channel, [])):
+                for user in list(network.channels.get(channel, [])):
                     try:
                         stats = self.get_channel_stats(user, channel)
                     except Exception:
@@ -760,23 +792,24 @@ shop_ducks_detector = 50
                     until = stats.get('ducks_detector_until', 0)
                     if until and until > now:
                         # Compute seconds left to channel spawn
-                        nxt = self.channel_next_spawn.get(channel)
+                        nxt = network.channel_next_spawn.get(channel)
                         seconds_left = int(nxt - now) if nxt else 60
                         seconds_left = max(0, seconds_left)
                         minutes = seconds_left // 60
                         secs = seconds_left % 60
                         msg = f"[Duck Detector] A duck will spawn in {minutes}m{secs:02d}s in {channel}."
-                        self.send_notice(user, msg)
-                self.channel_notice_sent[channel] = True
+                        await self.send_notice(network, user, msg)
+                network.channel_notice_sent[channel] = True
     
-    def despawn_old_ducks(self):
+    async def despawn_old_ducks(self, network: NetworkConnection = None):
         """Remove ducks that have been alive too long"""
         current_time = time.time()
         total_removed = 0
+        despawn_time = self.get_network_despawn_time(network) if network else self.despawn_time
         
         # self.log_action(f"[DEBUG] despawn_old_ducks called at {current_time}")
         
-        with self.ducks_lock:
+        async with self.ducks_lock:
             # Debug: log despawn check (throttled to avoid flooding)
             if self.active_ducks:
                 pass  # reduced debug noise
@@ -787,16 +820,24 @@ shop_ducks_detector = 50
                 remaining_ducks = []
                 for duck in ducks:
                     age = current_time - duck['spawn_time']
-                    if age < self.despawn_time:
+                    if age < despawn_time:
                         remaining_ducks.append(duck)
                     else:
                         total_removed += 1
                         # Announce quiet despawn to the channel (legacy styling)
-                        self.send_message(norm_channel, "The duck flies away.     ·°'`'°-.,¸¸.·°'`")
+                        # Find the network for this channel to send the message
+                        target_network = None
+                        for net in self.networks.values():
+                            if norm_channel in net.channels:
+                                target_network = net
+                                break
+                        if target_network:
+                            await self.send_message(target_network, norm_channel, "The duck flies away.     ·°'`'°-.,¸¸.·°'`")
                         # Quietly unconfiscate all on this channel when a duck despawns
                         self.unconfiscate_confiscated_in_channel(norm_channel)
                         # Update last spawn time for this channel
-                        self.channel_last_spawn[norm_channel] = current_time
+                        if target_network:
+                            target_network.channel_last_spawn[norm_channel] = current_time
                 if remaining_ducks:
                     self.active_ducks[norm_channel] = remaining_ducks
                 else:
@@ -2232,7 +2273,7 @@ shop_ducks_detector = 50
                     for ch, when in list(network.channel_next_spawn.items()):
                         if when and now >= when:
                             # If channel can't accept a new duck yet, defer by 5-15s
-                            if not await self.can_spawn_duck(ch):
+                            if not await self.can_spawn_duck(ch, network):
                                 network.channel_next_spawn[ch] = now + random.randint(5, 15)
                                 continue
                             await self.spawn_duck(network, ch)
@@ -2244,33 +2285,33 @@ shop_ducks_detector = 50
             except socket.error as e:
                 if e.errno == 11:  # EAGAIN/EWOULDBLOCK - no data available
                     # Check for MOTD timeout (30 seconds)
-                    if self.registered and hasattr(self, 'motd_start_time') and not hasattr(self, 'registration_complete') and not self.motd_timeout_triggered:
-                        elapsed = time.time() - self.motd_start_time
+                    if network.registered and hasattr(network, 'motd_start_time') and not hasattr(network, 'registration_complete') and not network.motd_timeout_triggered:
+                        elapsed = time.time() - network.motd_start_time
                         if elapsed > 30:
-                            self.log_action(f"MOTD timeout ({elapsed:.1f}s) - completing registration")
-                            self.motd_timeout_triggered = True
-                            self.complete_registration()
+                            self.log_action(f"MOTD timeout for {network.name} ({elapsed:.1f}s) - completing registration")
+                            network.motd_timeout_triggered = True
+                            await self.complete_registration(network)
                         elif elapsed > 25:  # Debug logging
-                            self.log_action(f"MOTD timeout approaching (no data): {elapsed:.1f}s elapsed")
+                            self.log_action(f"MOTD timeout approaching for {network.name} (no data): {elapsed:.1f}s elapsed")
                     
                     # Per-channel pre-spawn notices and spawns during idle
-                    if hasattr(self, 'registration_complete'):
-                        await self.notify_duck_detector()
+                    if hasattr(network, 'registration_complete'):
+                        await self.notify_duck_detector(network)
                         now = time.time()
-                        for ch, when in list(self.channel_next_spawn.items()):
+                        for ch, when in list(network.channel_next_spawn.items()):
                             if when and now >= when:
-                                if not await self.can_spawn_duck(ch):
-                                    self.channel_next_spawn[ch] = now + random.randint(5, 15)
+                                if not await self.can_spawn_duck(ch, network):
+                                    network.channel_next_spawn[ch] = now + random.randint(5, 15)
                                     continue
-                                await self.spawn_duck(ch)
-                                self.channel_next_spawn[ch] = None
+                                await self.spawn_duck(network, ch)
+                                network.channel_next_spawn[ch] = None
                     
                     # Check for duck despawn (only after registration, throttled to once per second)
-                    if hasattr(self, 'registration_complete'):
+                    if hasattr(network, 'registration_complete'):
                         current_time = time.time()
-                        if current_time - self.last_despawn_check >= 1.0:
-                            await self.despawn_old_ducks()
-                            self.last_despawn_check = current_time
+                        if current_time - network.last_despawn_check >= 1.0:
+                            await self.despawn_old_ducks(network)
+                            network.last_despawn_check = current_time
                     
                     await asyncio.sleep(0.1)  # Small delay to prevent busy waiting
                     continue
