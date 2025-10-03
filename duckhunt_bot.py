@@ -621,7 +621,8 @@ shop_ducks_detector = 50
             duck = {
                 'golden': is_golden,
                 'health': 5 if is_golden else 1,
-                'spawn_time': time.time()
+                'spawn_time': time.time(),
+                'revealed': False
             }
             # Append new duck (FIFO)
             self.active_ducks[norm_channel].append(duck)
@@ -632,8 +633,6 @@ shop_ducks_detector = 50
         self.log_action(f"Spawned {'golden' if is_golden else 'regular'} duck in {channel} - spawn_time: {duck['spawn_time']}")
         
         duck_art = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· \\_O<   QUACK"
-        if is_golden:
-            duck_art += "   * GOLDEN DUCK DETECTED *"
         
         self.send_message(channel, duck_art)
         
@@ -945,6 +944,11 @@ shop_ducks_detector = 50
             target_duck['health'] -= damage
             duck_killed = target_duck['health'] <= 0
             
+            # Reveal golden duck on first hit
+            if target_duck['golden'] and not target_duck.get('revealed', False):
+                target_duck['revealed'] = True
+                self.send_message(channel, "   * GOLDEN DUCK DETECTED *")
+            
             # Remove if dead
             if duck_killed and norm_channel in self.active_ducks:
                 # Remove the first (oldest) duck
@@ -1069,6 +1073,11 @@ shop_ducks_detector = 50
             
             duck['health'] -= bef_damage
             bef_killed = duck['health'] <= 0
+            
+            # Reveal golden duck on first befriend attempt
+            if duck['golden'] and not duck.get('revealed', False):
+                duck['revealed'] = True
+                self.send_message(channel, "   * GOLDEN DUCK DETECTED *")
             
             # Remove the duck if fully befriended
             if bef_killed:
@@ -1648,9 +1657,9 @@ shop_ducks_detector = 50
                 if len(self.active_ducks[norm_channel]) >= self.max_ducks:
                     self.send_notice(user, f"Cannot spawn golden duck in {channel} - already at maximum ({self.max_ducks})")
                     return
-                golden_duck = {'golden': True, 'health': 5, 'spawn_time': time.time()}
+                golden_duck = {'golden': True, 'health': 5, 'spawn_time': time.time(), 'revealed': False}
                 self.active_ducks[norm_channel].append(golden_duck)
-            duck_art = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· \\_O<   QUACK   * GOLDEN DUCK DETECTED *"
+            duck_art = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· \\_O<   QUACK"
             self.send_message(channel, duck_art)
             self.log_action(f"{user} spawned golden duck in {channel}")
             # Do not reset per-channel timer on manual spawns
