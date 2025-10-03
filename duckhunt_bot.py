@@ -371,14 +371,22 @@ shop_ducks_detector = 50
         # Schedule first duck spawn per channel
         await self.schedule_next_duck(network)
     
-    def is_owner(self, user):
-        """Check if user is owner"""
-        owners = self.config.get('owner', '').split(',')
+    def is_owner(self, user, network: NetworkConnection = None):
+        """Check if user is owner for a specific network"""
+        if network:
+            owners = network.config.get('owner', '').split(',')
+        else:
+            # Fallback to global config for backward compatibility
+            owners = self.config.get('owner', '').split(',')
         return user.lower() in [o.strip().lower() for o in owners]
     
-    def is_admin(self, user):
-        """Check if user is admin"""
-        admins = self.config.get('admin', '').split(',')
+    def is_admin(self, user, network: NetworkConnection = None):
+        """Check if user is admin for a specific network"""
+        if network:
+            admins = network.config.get('admin', '').split(',')
+        else:
+            # Fallback to global config for backward compatibility
+            admins = self.config.get('admin', '').split(',')
         return user.lower() in [a.strip().lower() for a in admins]
     
     def is_authenticated(self, user):
@@ -1824,36 +1832,36 @@ shop_ducks_detector = 50
             seconds = remaining % 60
             self.send_message(channel, f"{user} > Next duck in {minutes}m{seconds:02d}s.")
     
-    def process_message(self, data):
+    async def process_message(self, data, network: NetworkConnection):
         """Process incoming IRC message"""
         self.log_message("RECV", data.strip())
         
         # Handle PING
         if data.startswith("PING"):
             pong_response = data.replace("PING", "PONG")
-            self.send(pong_response)
+            await self.send_network(network, pong_response)
             return
         
         # Handle registration complete (001 message)
         if "001" in data and "Welcome" in data:
-            self.registered = True
+            network.registered = True
             # Set a timeout for MOTD completion (30 seconds)
-            self.motd_start_time = time.time()
+            network.motd_start_time = time.time()
             return
         
         # Handle MOTD end (376 message) - now we can complete registration
         if "376" in data and "End of /MOTD command" in data:
-            self.complete_registration()
+            await self.complete_registration(network)
             return
         
         # Count MOTD messages and force completion after too many
-        if self.registered and hasattr(self, 'motd_start_time') and not hasattr(self, 'registration_complete'):
+        if network.registered and hasattr(network, 'motd_start_time') and not hasattr(network, 'registration_complete'):
             if "372" in data or "375" in data or "376" in data:
-                self.motd_message_count += 1
-                if self.motd_message_count > 50:  # Force completion after 50 MOTD messages
-                    self.log_action(f"MOTD message limit reached ({self.motd_message_count} messages) - completing registration")
-                    self.motd_timeout_triggered = True
-                    self.complete_registration()
+                network.motd_message_count += 1
+                if network.motd_message_count > 50:  # Force completion after 50 MOTD messages
+                    self.log_action(f"MOTD message limit reached for {network.name} ({network.motd_message_count} messages) - completing registration")
+                    network.motd_timeout_triggered = True
+                    await self.complete_registration(network)
                     return
         
         # Parse message
@@ -1868,11 +1876,11 @@ shop_ducks_detector = 50
                 if target.startswith('#'):
                     # Channel message
                     self.log_message("CHANNEL", f"{target}: <{user}> {message}")
-                    self.handle_channel_message(user, target, message)
+                    await self.handle_channel_message(user, target, message, network)
                 else:
                     # Private message
                     self.log_message("PRIVMSG", f"{user}: {message}")
-                    self.handle_private_message(user, message)
+                    await self.handle_private_message(user, message, network)
         
         elif "NOTICE" in data:
             # Notice message
@@ -1923,7 +1931,7 @@ shop_ducks_detector = 50
             # Server message
             self.log_message("SERVER", data.strip())
     
-    def handle_channel_message(self, user, channel, message):
+    async def handle_channel_message(self, user, channel, message, network: NetworkConnection):
         """Handle channel message"""
         if not message.startswith('!'):
             return
@@ -1968,32 +1976,32 @@ shop_ducks_detector = 50
             self.handle_duckhelp(user, channel)
         elif command == "nextduck":
             # Owner-only, invoked in channel
-            if not self.is_owner(user):
+            if not self.is_owner(user, network):
                 return
             now = time.time()
             norm = self.normalize_channel(channel)
             key = None
-            for k in list(self.channel_next_spawn.keys()):
+            for k in list(network.channel_next_spawn.keys()):
                 if self.normalize_channel(k) == norm:
                     key = k
                     break
-            next_time = self.channel_next_spawn.get(key) if key else None
+            next_time = network.channel_next_spawn.get(key) if key else None
             if not next_time:
                 # Only schedule if no schedule exists at all
-                self.schedule_channel_next_duck(channel, allow_immediate=False)
+                await self.schedule_channel_next_duck(network, channel, allow_immediate=False)
                 # Get the newly created schedule using the same key lookup
-                for k in list(self.channel_next_spawn.keys()):
+                for k in list(network.channel_next_spawn.keys()):
                     if self.normalize_channel(k) == norm:
                         key = k
                         break
-                next_time = self.channel_next_spawn.get(key) if key else None
+                next_time = network.channel_next_spawn.get(key) if key else None
                 if not next_time:
-                    self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
+                    await self.send_message(network, channel, f"{user} > No spawn scheduled yet for {channel}.")
                     return
             remaining = max(0, int(next_time - now))
             minutes = remaining // 60
             seconds = remaining % 60
-            self.send_message(channel, f"{user} > Next duck in {minutes}m{seconds:02d}s.")
+            await self.send_message(network, channel, f"{user} > Next duck in {minutes}m{seconds:02d}s.")
         elif command in ["spawnduck", "spawngold", "rearm", "disarm"]:
             self.handle_admin_command(user, channel, command, args)
 
@@ -2160,7 +2168,7 @@ shop_ducks_detector = 50
 
         self.save_player_data()
     
-    def handle_private_message(self, user, message):
+    async def handle_private_message(self, user, message, network: NetworkConnection):
         """Handle private message"""
         self.log_action(f"Private message from {user}: {message}")
         command_parts = message.split()
