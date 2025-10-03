@@ -1,6 +1,6 @@
-# Duck Hunt IRC Bot v1.0_build36
+# Duck Hunt IRC Bot v1.0_build38
 
-An IRC bot that hosts Duck Hunt games in IRC channels. Players shoot ducks with `!bang` when they appear!
+An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, and multi-network support. Players shoot ducks with `!bang` when they appear!
 
 ## How to Play
 
@@ -14,16 +14,23 @@ An IRC bot that hosts Duck Hunt games in IRC channels. Players shoot ducks with 
 
 ## Commands
 
+### Player Commands
 - `!bang` - Shoot the current duck
 - `!bef` - Befriend the current duck
 - `!reload` - Reload your gun
-- `!shop` - View purchasable items
-- `!duckstats` - View your statistics
-- `!topduck` - View leaderboard
+- `!shop [id] [target]` - View purchasable items or buy item (some items require target)
+- `!duckstats [player]` - View your statistics or another player's stats
+- `!topduck [duck]` - View leaderboard by XP or by ducks killed
 - `!lastduck` - Show when you last shot a duck
 - `!duckhelp` - Show help
-- `!spawnduck [count]` - Admin: Spawn one or more ducks (up to max_ducks)
-- `!spawngold` - Admin: Spawn a golden duck
+
+### Admin Commands
+- `!spawnduck [count]` - Spawn one or more ducks (up to max_ducks)
+- `!spawngold` - Spawn a golden duck
+- `!nextduck` - Show next duck spawn ETA (owner only)
+- `!join <channel>` - Join a new channel (owner only)
+- `!rearm <player>` - Give a player a gun
+- `!disarm <player>` - Confiscate a player's gun
 
 ## Running the Bot
 
@@ -31,11 +38,15 @@ An IRC bot that hosts Duck Hunt games in IRC channels. Players shoot ducks with 
 2. Edit `duckhunt.conf` with your IRC server details (generated defaults shown):
    ```
    [DEFAULT]
-   server = irc.rizon.net/6667
+   # DuckHunt Configuration - All settings are network-specific
+
+   # Network configurations
+   [network:example]
+   server = irc.example.net/6667
    ssl = off
    bot_nick = DuckHuntBot,DuckHuntBot2
-   channel = #yourchannel,#anotherchannel
-   perform = PRIVMSG YourNick :I am here
+   channel = #yourchannel
+   perform = PRIVMSG nickserv :identify yourpassword ; PRIVMSG YourNick :I am here
    owner = YourNick
    admin = Admin1,Admin2
    min_spawn = 600
@@ -45,7 +56,7 @@ An IRC bot that hosts Duck Hunt games in IRC channels. Players shoot ducks with 
    max_ducks = 5
    despawn_time = 700
 
-   # Shop item prices
+   # Shop item prices (XP cost) - can be overridden per network
    shop_extra_bullet = 7
    shop_extra_magazine = 20
    shop_ap_ammo = 15
@@ -67,6 +78,8 @@ An IRC bot that hosts Duck Hunt games in IRC channels. Players shoot ducks with 
    shop_liability_insurance = 5
    shop_piece_of_bread = 50
    shop_ducks_detector = 50
+   shop_upgrade_magazine = 200
+   shop_extra_magazine = 400
    ```
 
 3. Run the bot:
@@ -80,48 +93,74 @@ An IRC bot that hosts Duck Hunt games in IRC channels. Players shoot ducks with 
 
 ## Features
 
+### Core Gameplay
 - **Multiple Ducks**: Up to `max_ducks` per channel (FIFO targeting of oldest)
 - **Despawns**: Ducks despawn after `despawn_time` seconds (configurable)
-- **Spawning**: Random spawns every `min_spawn`–`max_spawn` seconds
-- **XP System**: Base + bonuses; misses cost XP (-1)
+- **Spawning**: Random spawns every `min_spawn`–`max_spawn` seconds per channel
+- **XP System**: Base + bonuses; random miss penalties (-1 to -5 XP)
 - **Leveling & Stats**: Level-based accuracy, reliability, clip size, magazines
 - **Dynamic Ammo**: All HUD lines use level-based clip/mag values; new players start with those capacities
-- **Accuracy & Reliability**:
-  - Accuracy from the level table (+25% of remaining with Explosive ammo; +10% befriending with Bread)
-  - Reliability (jam chance = 1 - reliability); jams require `!reload`; Grease halves jam odds (24h)
-- **Golden Ducks**: 5 HP; worth 50 XP; AP/Explosive ammo do 2 dmg vs golden
-- **Consumables** (non-stacking): AP, Explosive, Bread, etc.; remaining counts shown in `!duckstats`
-- **Infrared Detector**: Trigger lock when no duck (limited uses); from shop (6 uses/24h) or loot (6 uses/24h)
-- **Ducks Detector**: 60s pre-spawn notice via NOTICE (24h)
-- **Weighted Loot**: 10% on kills only; historically weighted table; most effects last 24h
-- **Messaging**: All player responses prefixed with `PLAYERNAME -`
-- **Admin/Owner**: Spawn ducks, rearm/disarm, clear channel, etc.
-- **Last Duck Tracking**: `!lastduck` shows your last kill time
-- **Auto-Restart**: Wrapper script; reconnect logic; MOTD handling
-- **No Dependencies**: Pure Python
+- **Golden Ducks**: 5 HP; worth 50 XP; AP/Explosive ammo do 2 dmg vs golden; revealed on first hit/befriend
+
+### Shop System (23 Items)
+- **Ammo & Weapons**: Extra bullets, magazines, AP/Explosive ammo, sights, silencers
+- **Protection**: Sunglasses, life/liability insurance, spare clothes
+- **Sabotage**: Mirror, sand, water bucket, sabotage (all require target)
+- **Upgrades**: Magazine capacity upgrades (5 levels max, dynamic pricing)
+- **Consumables**: Bread, grease, brush, four-leaf clover, detectors
+- **Target-based Items**: Some items require `!shop <id> <target>` syntax
+
+### Advanced Features
+- **Multi-Network Support**: Connect to multiple IRC networks simultaneously
+- **Karma System**: Track good/bad actions with karma percentage in stats
+- **Accidental Shooting**: Wild fire (50% chance) and ricochet (20% chance) can hit other players
+- **Item Interactions**: Complex interactions (mirror vs sunglasses, sand vs brush, etc.)
+- **Weighted Loot**: 10% drop chance on kills with historically balanced loot table
+- **Colorized Output**: IRC color codes for enhanced visual experience
+- **Log Management**: Automatic log file trimming (10MB limit)
+- **Async Architecture**: Non-blocking I/O for better performance
+
+### Admin Features
+- **Channel Management**: Join new channels, spawn ducks, manage players
+- **Player Management**: Rearm/disarm players, clear channel stats
+- **Spawn Control**: Manual duck spawning, golden duck spawning
+- **Network-Specific**: All settings and permissions are network-specific
 
 ## Game Mechanics
 
+### Combat System
 - **Spawn**: Random spawns per channel up to `max_ducks`; oldest duck is always targeted
-- **Shoot or Befriend**: `!bang` applies accuracy/reliability; `!bef` uses befriending accuracy; misses are -1 XP
+- **Shoot or Befriend**: `!bang` applies accuracy/reliability; `!bef` uses befriending accuracy
+- **Miss Penalties**: Random -1 to -5 XP for misses; wild fire adds -2 XP
+- **Accidental Shooting**: Wild fire (50% chance) and ricochet (20% chance) can hit other players
+- **Insurance**: Life insurance prevents confiscation; liability insurance halves penalties
+
+### Item System
 - **Loot on Kill (10%)**: Weighted random loot; common/uncommon/rare/junk; durations mostly 24h
-- **Detectors**:
-  - Ducks detector: 60s pre-spawn notice while active (24h)
-  - Infrared detector: `!bang` with no duck is safely locked; shop/loot have limited uses
-- **Golden**: 5 HP; AP/Explosive do 2 dmg vs golden; Bread improves befriending vs golden
+- **Shop Items**: 23 different items with various effects and durations
 - **Consumables**: Do not stack; must be used up before buying again; shown in `!duckstats`
-- **Despawn**: Ducks disappear after `despawn_time`
+- **Upgrades**: Magazine capacity upgrades with dynamic pricing (5 levels max)
+
+### Detection Systems
+- **Ducks Detector**: 60s pre-spawn notice while active (24h)
+- **Infrared Detector**: `!bang` with no duck is safely locked; limited uses (6 uses/24h)
+- **Golden Duck Detection**: Revealed on first hit or befriend attempt
+
+### Leveling & Stats
+- **XP System**: Base XP + bonuses; level-based accuracy, reliability, clip size
+- **Karma Tracking**: Good/bad actions tracked with karma percentage
+- **Promotion/Demotion**: Automatic level change announcements
+- **Channel-Specific**: All stats are tracked per channel
 
 ## Configuration
 
-The bot uses `duckhunt.conf` for all settings:
-- IRC server and connection details
-- Channel and nickname configuration
-- Game timing and XP settings
-- Multiple duck limits and despawn times
-- Admin user lists
-- Perform commands
-- Shop item prices
+The bot uses `duckhunt.conf` for all settings with multi-network support:
+- **Network-Specific Settings**: Each network has its own configuration section
+- **IRC Connection**: Server, SSL, nickname, channels, perform commands
+- **Game Settings**: Spawn timing, XP values, duck limits, despawn times
+- **Permissions**: Owner and admin lists per network
+- **Shop Prices**: All 23 shop item prices (can be overridden per network)
+- **Backward Compatibility**: Falls back to global settings if network-specific not found
 
 ## License
 

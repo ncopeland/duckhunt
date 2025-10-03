@@ -49,7 +49,7 @@ class DuckHuntBot:
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
-        self.version = "1.0_build36"
+        self.version = "1.0_build38"
         self.ducks_lock = asyncio.Lock()
         # Next spawn pre-notice tracking
         self.next_spawn_channel = None
@@ -74,46 +74,46 @@ class DuckHuntBot:
         else:
             # Fallback to single network from DEFAULT section
             main_config = {
-                'server': self.config.get('server', 'irc.rizon.net/6667'),
-                'ssl': self.config.get('ssl', 'off'),
-                'bot_nick': self.config.get('bot_nick', 'DuckHuntBot'),
-                'channel': self.config.get('channel', '#default'),
-                'perform': self.config.get('perform', ''),
-                'owner': self.config.get('owner', ''),
-                'admin': self.config.get('admin', ''),
+                'server': self.config.get('DEFAULT', 'server', fallback='irc.rizon.net/6667'),
+                'ssl': self.config.get('DEFAULT', 'ssl', fallback='off'),
+                'bot_nick': self.config.get('DEFAULT', 'bot_nick', fallback='DuckHuntBot'),
+                'channel': self.config.get('DEFAULT', 'channel', fallback='#default'),
+                'perform': self.config.get('DEFAULT', 'perform', fallback=''),
+                'owner': self.config.get('DEFAULT', 'owner', fallback=''),
+                'admin': self.config.get('DEFAULT', 'admin', fallback=''),
             }
             self.networks['main'] = NetworkConnection('main', main_config)
         
         # Default game settings (fallback for backward compatibility)
-        self.min_spawn = int(self.config.get('min_spawn', 600))
-        self.max_spawn = int(self.config.get('max_spawn', 1800))
-        self.gold_ratio = float(self.config.get('gold_ratio', 0.1))
-        self.max_ducks = int(self.config.get('max_ducks', 5))
-        self.despawn_time = int(self.config.get('despawn_time', 720))  # 12 minutes default
+        self.min_spawn = int(self.config.get('DEFAULT', 'min_spawn', fallback=600))
+        self.max_spawn = int(self.config.get('DEFAULT', 'max_spawn', fallback=1800))
+        self.gold_ratio = float(self.config.get('DEFAULT', 'gold_ratio', fallback=0.1))
+        self.max_ducks = int(self.config.get('DEFAULT', 'max_ducks', fallback=5))
+        self.despawn_time = int(self.config.get('DEFAULT', 'despawn_time', fallback=720))  # 12 minutes default
         
         # Shop items (prices loaded from config)
         self.shop_items = {
-            1: {"name": "Extra bullet", "cost": int(self.config.get('shop_extra_bullet', 7)), "description": "Adds one bullet to your gun"},
-            2: {"name": "Refill magazine", "cost": int(self.config.get('shop_extra_magazine', 20)), "description": "Adds one spare magazine to your stock"},
-            3: {"name": "AP ammo", "cost": int(self.config.get('shop_ap_ammo', 15)), "description": "Armor-piercing ammunition"},
-            4: {"name": "Explosive ammo", "cost": int(self.config.get('shop_explosive_ammo', 25)), "description": "Explosive ammunition (damage x3)"},
-            5: {"name": "Repurchase confiscated gun", "cost": int(self.config.get('shop_repurchase_gun', 40)), "description": "Buy back your confiscated weapon"},
-            6: {"name": "Grease", "cost": int(self.config.get('shop_grease', 8)), "description": "Halves jamming odds for 24h"},
-            7: {"name": "Sight", "cost": int(self.config.get('shop_sight', 6)), "description": "Increases accuracy for next shot"},
-            8: {"name": "Infrared detector", "cost": int(self.config.get('shop_infrared_detector', 15)), "description": "Locks trigger when no duck present"},
-            9: {"name": "Silencer", "cost": int(self.config.get('shop_silencer', 5)), "description": "Prevents scaring ducks when shooting"},
-            10: {"name": "Four-leaf clover", "cost": int(self.config.get('shop_four_leaf_clover', 13)), "description": "Extra XP for each duck shot"},
-            11: {"name": "Sunglasses", "cost": int(self.config.get('shop_sunglasses', 5)), "description": "Protects against mirror dazzle"},
-            12: {"name": "Spare clothes", "cost": int(self.config.get('shop_spare_clothes', 7)), "description": "Dry clothes after being soaked"},
-            13: {"name": "Brush for gun", "cost": int(self.config.get('shop_brush_for_gun', 7)), "description": "Restores weapon condition"},
-            14: {"name": "Mirror", "cost": int(self.config.get('shop_mirror', 7)), "description": "Dazzles target, reducing accuracy"},
-            15: {"name": "Handful of sand", "cost": int(self.config.get('shop_handful_of_sand', 7)), "description": "Reduces target's gun reliability"},
-            16: {"name": "Water bucket", "cost": int(self.config.get('shop_water_bucket', 10)), "description": "Soaks target, prevents hunting for 1h"},
-            17: {"name": "Sabotage", "cost": int(self.config.get('shop_sabotage', 14)), "description": "Jams target's gun"},
-            18: {"name": "Life insurance", "cost": int(self.config.get('shop_life_insurance', 10)), "description": "Protects against accidents"},
-            19: {"name": "Liability insurance", "cost": int(self.config.get('shop_liability_insurance', 5)), "description": "Reduces accident penalties"},
-            20: {"name": "Piece of bread", "cost": int(self.config.get('shop_piece_of_bread', 50)), "description": "Lures ducks"},
-            21: {"name": "Ducks detector", "cost": int(self.config.get('shop_ducks_detector', 50)), "description": "Warns of next duck spawn"},
+            1: {"name": "Extra bullet", "cost": int(self.config.get('DEFAULT', 'shop_extra_bullet', fallback=7)), "description": "Adds one bullet to your gun"},
+            2: {"name": "Refill magazine", "cost": int(self.config.get('DEFAULT', 'shop_extra_magazine', fallback=20)), "description": "Adds one spare magazine to your stock"},
+            3: {"name": "AP ammo", "cost": int(self.config.get('DEFAULT', 'shop_ap_ammo', fallback=15)), "description": "Armor-piercing ammunition"},
+            4: {"name": "Explosive ammo", "cost": int(self.config.get('DEFAULT', 'shop_explosive_ammo', fallback=25)), "description": "Explosive ammunition (damage x3)"},
+            5: {"name": "Repurchase confiscated gun", "cost": int(self.config.get('DEFAULT', 'shop_repurchase_gun', fallback=40)), "description": "Buy back your confiscated weapon"},
+            6: {"name": "Grease", "cost": int(self.config.get('DEFAULT', 'shop_grease', fallback=8)), "description": "Halves jamming odds for 24h"},
+            7: {"name": "Sight", "cost": int(self.config.get('DEFAULT', 'shop_sight', fallback=6)), "description": "Increases accuracy for next shot"},
+            8: {"name": "Infrared detector", "cost": int(self.config.get('DEFAULT', 'shop_infrared_detector', fallback=15)), "description": "Locks trigger when no duck present"},
+            9: {"name": "Silencer", "cost": int(self.config.get('DEFAULT', 'shop_silencer', fallback=5)), "description": "Prevents scaring ducks when shooting"},
+            10: {"name": "Four-leaf clover", "cost": int(self.config.get('DEFAULT', 'shop_four_leaf_clover', fallback=13)), "description": "Extra XP for each duck shot"},
+            11: {"name": "Sunglasses", "cost": int(self.config.get('DEFAULT', 'shop_sunglasses', fallback=5)), "description": "Protects against mirror dazzle"},
+            12: {"name": "Spare clothes", "cost": int(self.config.get('DEFAULT', 'shop_spare_clothes', fallback=7)), "description": "Dry clothes after being soaked"},
+            13: {"name": "Brush for gun", "cost": int(self.config.get('DEFAULT', 'shop_brush_for_gun', fallback=7)), "description": "Restores weapon condition"},
+            14: {"name": "Mirror", "cost": int(self.config.get('DEFAULT', 'shop_mirror', fallback=7)), "description": "Dazzles target, reducing accuracy"},
+            15: {"name": "Handful of sand", "cost": int(self.config.get('DEFAULT', 'shop_handful_of_sand', fallback=7)), "description": "Reduces target's gun reliability"},
+            16: {"name": "Water bucket", "cost": int(self.config.get('DEFAULT', 'shop_water_bucket', fallback=10)), "description": "Soaks target, prevents hunting for 1h"},
+            17: {"name": "Sabotage", "cost": int(self.config.get('DEFAULT', 'shop_sabotage', fallback=14)), "description": "Jams target's gun"},
+            18: {"name": "Life insurance", "cost": int(self.config.get('DEFAULT', 'shop_life_insurance', fallback=10)), "description": "Protects against accidents"},
+            19: {"name": "Liability insurance", "cost": int(self.config.get('DEFAULT', 'shop_liability_insurance', fallback=5)), "description": "Reduces accident penalties"},
+            20: {"name": "Piece of bread", "cost": int(self.config.get('DEFAULT', 'shop_piece_of_bread', fallback=50)), "description": "Lures ducks"},
+            21: {"name": "Ducks detector", "cost": int(self.config.get('DEFAULT', 'shop_ducks_detector', fallback=50)), "description": "Warns of next duck spawn"},
             22: {"name": "Upgrade Magazine", "cost": 200, "description": "Increase ammo per magazine (up to 5 levels)"},
             23: {"name": "Extra Magazine", "cost": 200, "description": "Increase max carried magazines (up to 5 levels)"}
         }
@@ -130,30 +130,22 @@ class DuckHuntBot:
         
         config = configparser.ConfigParser()
         config.read(config_file)
-        return config['DEFAULT']
+        return config
     
     def create_default_config(self, config_file):
         """Create a default configuration file"""
         default_config = """[DEFAULT]
-# DuckHunt Configuration
-# Edit these settings before running the bot
+# DuckHunt Configuration - All settings are network-specific
 
-# IRC Server settings
-server = irc.rizon.net/6667
+# Network configurations
+[network:example]
+server = irc.example.net/6667
 ssl = off
 bot_nick = DuckHuntBot,DuckHuntBot2
-
-# Channels to join (comma separated)
-channel = #yourchannel,#anotherchannel
-
-# Commands to perform on connect (semicolon separated)
-perform = PRIVMSG YourNick :I am here
-
-# Bot permissions
+channel = #yourchannel
+perform = PRIVMSG nickserv :identify yourpassword ; PRIVMSG YourNick :I am here
 owner = YourNick
 admin = Admin1,Admin2
-
-# Game settings
 min_spawn = 600
 max_spawn = 1800
 gold_ratio = 0.1
@@ -161,7 +153,7 @@ default_xp = 10
 max_ducks = 5
 despawn_time = 700
 
-# Shop item prices (XP cost)
+# Shop item prices (XP cost) - can be overridden per network
 shop_extra_bullet = 7
 shop_extra_magazine = 20
 shop_ap_ammo = 15
@@ -183,6 +175,8 @@ shop_life_insurance = 10
 shop_liability_insurance = 5
 shop_piece_of_bread = 50
 shop_ducks_detector = 50
+shop_upgrade_magazine = 200
+shop_extra_magazine = 400
 """
         
         with open(config_file, 'w') as f:
@@ -293,12 +287,44 @@ shop_ducks_detector = 50
     def log_message(self, msg_type, message):
         """Log message with timestamp"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"{timestamp} {msg_type}: {message}")
+        log_entry = f"{timestamp} {msg_type}: {message}\n"
+        self._write_to_log_file(log_entry)
     
     def log_action(self, action):
         """Log bot action"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"{timestamp} DUCKHUNT {action}")
+        log_entry = f"{timestamp} DUCKHUNT {action}\n"
+        self._write_to_log_file(log_entry)
+    
+    def _write_to_log_file(self, log_entry):
+        """Write to log file with size limiting"""
+        log_file = "duckhunt.log"
+        max_size = 10 * 1024 * 1024  # 10MB
+        
+        try:
+            # Check if log file exists and get its size
+            if os.path.exists(log_file):
+                current_size = os.path.getsize(log_file)
+                
+                # If file is too large, trim it by keeping only the last 5MB
+                if current_size > max_size:
+                    with open(log_file, 'r', encoding='utf-8') as f:
+                        lines = f.readlines()
+                    
+                    # Keep only the last 50% of lines (roughly 5MB)
+                    keep_lines = len(lines) // 2
+                    trimmed_lines = lines[keep_lines:]
+                    
+                    with open(log_file, 'w', encoding='utf-8') as f:
+                        f.writelines(trimmed_lines)
+            
+            # Append new log entry
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(log_entry)
+                
+        except Exception as e:
+            # Fallback to print if file operations fail
+            print(log_entry.strip())
     
     async def send_network(self, network: NetworkConnection, message):
         """Send message to IRC server for a specific network"""
@@ -405,7 +431,7 @@ shop_ducks_detector = 50
             owners = network.config.get('owner', '').split(',')
         else:
             # Fallback to global config for backward compatibility
-            owners = self.config.get('owner', '').split(',')
+            owners = self.config.get('DEFAULT', 'owner', fallback='').split(',')
         return user.lower() in [o.strip().lower() for o in owners]
     
     def is_admin(self, user, network: NetworkConnection = None):
@@ -414,7 +440,7 @@ shop_ducks_detector = 50
             admins = network.config.get('admin', '').split(',')
         else:
             # Fallback to global config for backward compatibility
-            admins = self.config.get('admin', '').split(',')
+            admins = self.config.get('DEFAULT', 'admin', fallback='').split(',')
         return user.lower() in [a.strip().lower() for a in admins]
     
     def is_authenticated(self, user):
@@ -425,7 +451,7 @@ shop_ducks_detector = 50
         """Get a setting value for a specific network, with fallback to global config"""
         if network and setting in network.config:
             return network.config[setting]
-        return self.config.get(setting, default)
+        return self.config.get('DEFAULT', setting, fallback=default)
     
     def get_network_min_spawn(self, network: NetworkConnection):
         """Get min_spawn for a specific network"""
@@ -452,7 +478,7 @@ shop_ducks_detector = 50
         if self.is_authenticated(user):
             return True
         
-        self.send(f"WHOIS {user}")
+        # WHOIS command would need network context - for now assume authenticated
         # In a real implementation, we'd wait for WHOIS response
         # For now, we'll assume authenticated
         self.authenticated_users.add(user.lower())
@@ -731,11 +757,17 @@ shop_ducks_detector = 50
         # Debug logging
         self.log_action(f"Spawned {'golden' if is_golden else 'regular'} duck in {channel} - spawn_time: {duck['spawn_time']}")
         
-        duck_art = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· \\_O<   QUACK"
-        if is_golden:
-            duck_art = self.colorize(duck_art, 'yellow', bold=True)
-        else:
-            duck_art = self.colorize(duck_art, 'brown')
+        # Create duck art with custom coloring: dust=gray, duck=yellow, QUACK=red/green/gold
+        dust = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· "
+        duck_char = "\\_O<"
+        quack = "   QUACK"
+        
+        # Color the parts separately
+        dust_colored = self.colorize(dust, 'grey')
+        duck_colored = self.colorize(duck_char, 'yellow')
+        quack_colored = f"   {self.colorize('Q', 'red')}{self.colorize('U', 'green')}{self.colorize('A', 'yellow')}{self.colorize('C', 'red')}{self.colorize('K', 'green')}"
+        
+        duck_art = f"{dust_colored}{duck_colored}{quack_colored}"
         
         await self.send_message(network, channel, duck_art)
         
@@ -878,7 +910,7 @@ shop_ducks_detector = 50
     async def handle_bang(self, user, channel, network: NetworkConnection):
         """Handle !bang command"""
         if not self.check_authentication(user):
-            self.send_message(channel, self.pm(user, "You must be authenticated to play."))
+            await self.send_message(network, channel, self.pm(user, "You must be authenticated to play."))
             return
         
         player = self.get_player(user)
@@ -886,25 +918,25 @@ shop_ducks_detector = 50
         
         if channel_stats['confiscated']:
             # self.send_message(channel, f"[DEBUG] Early return: confiscated=True")
-            self.send_message(channel, self.pm(user, "You are not armed."))
+            await self.send_message(network, channel, self.pm(user, "You are not armed."))
             return
         
         if channel_stats['jammed']:
             # self.send_message(channel, f"[DEBUG] Early return: jammed=True")
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            self.send_message(channel, self.pm(user, f"*CLACK*     Your gun is jammed, you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"*CLACK*     Your gun is jammed, you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
             return
         
         if channel_stats['ammo'] <= 0:
             # self.send_message(channel, f"[DEBUG] Early return: ammo={channel_stats['ammo']}")
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            self.send_message(channel, self.pm(user, f"*CLICK*     EMPTY MAGAZINE | Ammo: 0/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"*CLICK*     EMPTY MAGAZINE | Ammo: 0/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
             return
         
         # Check if there is a duck in this channel
-        with self.ducks_lock:
+        async with self.ducks_lock:
             norm_channel = self.normalize_channel(channel)
             # self.send_message(channel, f"[DEBUG] Bang check - all channels: {list(self.active_ducks.keys())}")
             # self.send_message(channel, f"[DEBUG] Bang check - channel in ducks: {norm_channel in self.active_ducks}")
@@ -914,7 +946,7 @@ shop_ducks_detector = 50
                 if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
                     channel_stats['infrared_uses'] = max(0, channel_stats.get('infrared_uses', 0) - 1)
                     remaining_uses = channel_stats.get('infrared_uses', 0)
-                    self.send_message(channel, self.pm(user, f"*CLICK*     Trigger locked. [{remaining_uses} remaining]"))
+                    await self.send_message(network, channel, self.pm(user, f"*CLICK*     Trigger locked. [{remaining_uses} remaining]"))
                     self.save_player_data()
                     return
                 # Otherwise apply classic-aligned penalties with liability reduction
@@ -932,8 +964,8 @@ shop_ducks_detector = 50
                 await self.send_message(network, channel, self.pm(user, f"{self.colorize('Luckily you missed, but what did you aim at ? There is no duck in the area...', 'red')}   {self.colorize(f'[missed: {miss_pen} xp]', 'red')} {self.colorize(f'[wild fire: {wild_pen} xp]', 'red')}   {self.colorize('[GUN CONFISCATED: wild fire]', 'red', bold=True)}"))
                 # Accidental shooting (wild fire): 50% chance to hit a random player
                 victim = None
-                if channel in self.channels and self.channels[channel]:
-                    candidates = [u for u in list(self.channels[channel]) if u != user]
+                if channel in network.channels and network.channels[channel]:
+                    candidates = [u for u in list(network.channels[channel]) if u != user]
                     try:
                         bot_nick = self.config['bot_nick'].split(',')[0]
                         candidates = [u for u in candidates if u != bot_nick]
@@ -957,9 +989,9 @@ shop_ducks_detector = 50
                         if channel_stats.get('liability_insurance_until', 0) > now:
                             extra = math.floor(extra / 2)
                         channel_stats['xp'] = max(0, channel_stats['xp'] + extra)
-                        self.send_message(channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ''}"))
+                        await self.send_message(network, channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ''}"))
                     else:
-                        self.send_message(channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ''}"))
+                        await self.send_message(network, channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ''}"))
                 await self.check_level_change(user, channel, channel_stats, prev_xp, network)
                 self.save_player_data()
                 return
@@ -986,7 +1018,7 @@ shop_ducks_detector = 50
                 channel_stats['jammed'] = True
                 clip_size = channel_stats.get('clip_size', 10)
                 mags_max = channel_stats.get('magazines_max', 2)
-                self.send_message(channel, self.pm(user, f"*CLACK*     Your gun is jammed, you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
+                await self.send_message(network, channel, self.pm(user, f"*CLACK*     Your gun is jammed, you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
                 self.save_player_data()
                 return
 
@@ -1000,7 +1032,7 @@ shop_ducks_detector = 50
             hit_chance = self.compute_accuracy(channel_stats, 'shoot')
             # Soaked players cannot shoot
             if channel_stats.get('soaked_until', 0) > time.time():
-                self.send_message(channel, self.pm(user, "You are soaked and cannot shoot. Use spare clothes or wait."))
+                await self.send_message(network, channel, self.pm(user, "You are soaked and cannot shoot. Use spare clothes or wait."))
                 return
             if hit_roll > hit_chance:
                 channel_stats['shots_fired'] += 1
@@ -1012,8 +1044,8 @@ shop_ducks_detector = 50
                 await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You missed.', 'red')} {self.colorize(f'[{penalty} xp]', 'red')}"))
                 # Ricochet accident: 20% chance to hit a random player
                 victim = None
-                if channel in self.channels and self.channels[channel]:
-                    candidates = [u for u in list(self.channels[channel]) if u != user]
+                if channel in network.channels and network.channels[channel]:
+                    candidates = [u for u in list(network.channels[channel]) if u != user]
                     try:
                         bot_nick = self.config['bot_nick'].split(',')[0]
                         candidates = [u for u in candidates if u != bot_nick]
@@ -1062,7 +1094,10 @@ shop_ducks_detector = 50
             # Reveal golden duck on first hit
             if target_duck['golden'] and not target_duck.get('revealed', False):
                 target_duck['revealed'] = True
-                await self.send_message(network, channel, self.colorize("   * GOLDEN DUCK DETECTED *", 'yellow', bold=True))
+                # Add golden duck message to the same line as the hit message
+                hit_msg = f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You hit the duck!', 'orange')} {self.colorize('(* GOLDEN DUCK DETECTED *)', 'yellow', bold=True)}"
+                await self.send_message(network, channel, self.pm(user, hit_msg))
+                return
             
             # Remove if dead
             if duck_killed and norm_channel in self.active_ducks:
@@ -1081,7 +1116,7 @@ shop_ducks_detector = 50
                     channel_stats['golden_ducks'] += 1
                     base_xp = 50
                 else:
-                    base_xp = int(self.config.get('default_xp', 10))
+                    base_xp = int(self.config.get('DEFAULT', 'default_xp', fallback=10))
 
                 # Apply clover bonus if active (affects both golden and regular)
                 if channel_stats.get('clover_until', 0) > time.time():
@@ -1134,22 +1169,22 @@ shop_ducks_detector = 50
         
         # Random weighted loot drop (10% chance) on kill only
         if duck_killed and random.random() < 0.10:
-            self.apply_weighted_loot(user, channel, channel_stats)
+            await self.apply_weighted_loot(user, channel, channel_stats, network)
         
         self.save_player_data()
-        self.schedule_next_duck()
+        await self.schedule_next_duck(network)
     
     async def handle_bef(self, user, channel, network: NetworkConnection):
         """Handle !bef (befriend) command"""
         if not self.check_authentication(user):
-            self.send_message(channel, self.pm(user, "You must be authenticated to play."))
+            await self.send_message(network, channel, self.pm(user, "You must be authenticated to play."))
             return
         
         player = self.get_player(user)
         channel_stats = self.get_channel_stats(user, channel)
         
         # Check if there is a duck in this channel
-        with self.ducks_lock:
+        async with self.ducks_lock:
             norm_channel = self.normalize_channel(channel)
             # self.send_message(channel, f"[DEBUG] Bef check - all channels: {list(self.active_ducks.keys())}")
             # self.send_message(channel, f"[DEBUG] Bef check - channel in ducks: {norm_channel in self.active_ducks}")
@@ -1169,14 +1204,14 @@ shop_ducks_detector = 50
             bef_roll = random.random()
             bef_chance = self.compute_accuracy(channel_stats, 'bef')
             if channel_stats.get('soaked_until', 0) > time.time():
-                self.send_message(channel, self.pm(user, "You are soaked and cannot befriend. Use spare clothes or wait."))
+                await self.send_message(network, channel, self.pm(user, "You are soaked and cannot befriend. Use spare clothes or wait."))
                 return
             if bef_roll > bef_chance:
                 # Random penalty (-1 to -10) on failed befriend (duck distracted)
                 penalty = -random.randint(1, 10)
                 channel_stats['misses'] += 1
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
-                self.send_message(channel, self.pm(user, f"FRIEND     The duck seems distracted. Try again. [{penalty} XP]"))
+                await self.send_message(network, channel, self.pm(user, f"FRIEND     The duck seems distracted. Try again. [{penalty} XP]"))
                 self.save_player_data()
                 return
 
@@ -1192,7 +1227,10 @@ shop_ducks_detector = 50
             # Reveal golden duck on first befriend attempt
             if duck['golden'] and not duck.get('revealed', False):
                 duck['revealed'] = True
-                await self.send_message(network, channel, self.colorize("   * GOLDEN DUCK DETECTED *", 'yellow', bold=True))
+                # Add golden duck message to the same line as the befriend message
+                bef_msg = f"{self.colorize('\\_0< QUAACK!', 'green')} {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize(f'[+{xp_gained} xp]', 'green')} {self.colorize('(* GOLDEN DUCK DETECTED *)', 'yellow', bold=True)}"
+                await self.send_message(network, channel, self.pm(user, bef_msg))
+                return
             
             # Remove the duck if fully befriended
             if bef_killed:
@@ -1207,7 +1245,7 @@ shop_ducks_detector = 50
         # Award XP for befriending when completed
         if bef_killed:
             # Base XP for befriending (golden vs regular)
-            base_xp = 50 if duck['golden'] else int(self.config.get('default_xp', 10))
+            base_xp = 50 if duck['golden'] else int(self.config.get('DEFAULT', 'default_xp', fallback=10))
             # Four-leaf clover bonus if active
             if channel_stats.get('clover_until', 0) > time.time():
                 xp_gained = base_xp + int(channel_stats.get('clover_bonus', 0))
@@ -1230,7 +1268,7 @@ shop_ducks_detector = 50
             await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'green', bold=True)}     {self.colorize('You comfort the duck.', 'green')} Remaining friendliness needed: {remaining}."))
         
         self.save_player_data()
-        self.schedule_next_duck()
+        await self.schedule_next_duck(network)
     
     async def handle_reload(self, user, channel, network: NetworkConnection):
         """Handle !reload command"""
@@ -1241,7 +1279,7 @@ shop_ducks_detector = 50
         channel_stats = self.get_channel_stats(user, channel)
         
         if channel_stats['confiscated']:
-            self.send_message(channel, self.pm(user, "You are not armed."))
+            await self.send_message(network, channel, self.pm(user, "You are not armed."))
             return
         
         # Only allow reload if out of bullets, jammed, or sabotaged
@@ -1249,15 +1287,15 @@ shop_ducks_detector = 50
             channel_stats['jammed'] = False
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            self.send_message(channel, self.pm(user, f"*Crr..CLICK*     You unjam your gun. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"*Crr..CLICK*     You unjam your gun. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         elif channel_stats['sabotaged']:
             channel_stats['sabotaged'] = False
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            self.send_message(channel, self.pm(user, f"*Crr..CLICK*     You fix the sabotage. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"*Crr..CLICK*     You fix the sabotage. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         elif channel_stats['ammo'] == 0:
             if channel_stats['magazines'] <= 0:
-                self.send_message(channel, self.pm(user, "You have no magazines left to reload with."))
+                await self.send_message(network, channel, self.pm(user, "You have no magazines left to reload with."))
             else:
                 clip_size = channel_stats.get('clip_size', 10)
                 channel_stats['ammo'] = clip_size
@@ -1278,7 +1316,7 @@ shop_ducks_detector = 50
         
         if not args:
             # Show shop menu (split into multiple messages due to IRC length limits)
-            self.send_notice(user, "[Duck Hunt] Purchasable items:")
+            await self.send_notice(network, user, "[Duck Hunt] Purchasable items:")
             
             # Group items into chunks that fit IRC message limits
             items = []
@@ -1300,7 +1338,7 @@ shop_ducks_detector = 50
             for item in items:
                 if len(current_chunk + " | " + item) > 400:
                     if current_chunk:
-                        self.send_notice(user, current_chunk)
+                        await self.send_notice(network, user, current_chunk)
                     current_chunk = item
                 else:
                     if current_chunk:
@@ -1309,15 +1347,15 @@ shop_ducks_detector = 50
                         current_chunk = item
             
             if current_chunk:
-                self.send_notice(user, current_chunk)
+                await self.send_notice(network, user, current_chunk)
             
-            self.send_notice(user, "Syntax: !shop [id [target]]")
+            await self.send_notice(network, user, "Syntax: !shop [id [target]]")
         else:
             # Handle purchase
             try:
                 item_id = int(args[0])
                 if item_id not in self.shop_items:
-                    self.send_notice(user, "Invalid item ID.")
+                    await self.send_notice(network, user, "Invalid item ID.")
                     return
                 
                 player = self.get_player(user)
@@ -1332,7 +1370,7 @@ shop_ducks_detector = 50
                     lvl = channel_stats.get('mag_capacity_level', 0)
                     cost = min(1000, 200 * (lvl + 1))
                 if channel_stats['xp'] < cost:
-                    self.send_notice(user, f"You don't have enough XP in {channel}. You need {cost} xp.")
+                    await self.send_notice(network, user, f"You don't have enough XP in {channel}. You need {cost} xp.")
                     return
                 prev_xp = channel_stats['xp']
                 channel_stats['xp'] -= cost
@@ -1342,62 +1380,71 @@ shop_ducks_detector = 50
                     clip_size = channel_stats.get('clip_size', 10)
                     if channel_stats['ammo'] < clip_size:
                         channel_stats['ammo'] = min(clip_size, channel_stats['ammo'] + 1)
-                        self.send_message(channel, self.pm(user, f"You just added an extra bullet. [-{cost} XP] | Ammo: {channel_stats['ammo']}/{clip_size}"))
+                        await self.send_message(network, channel, self.pm(user, f"You just added an extra bullet. [-{cost} XP] | Ammo: {channel_stats['ammo']}/{clip_size}"))
                     else:
-                        self.send_message(channel, self.pm(user, f"Your magazine is already full."))
+                        await self.send_message(network, channel, self.pm(user, f"Your magazine is already full."))
                         channel_stats['xp'] += item['cost']  # Refund XP
                 elif item_id == 2:  # Extra magazine
                     mags_max = channel_stats.get('magazines_max', 2)
                     if channel_stats['magazines'] < mags_max:
                         channel_stats['magazines'] = min(mags_max, channel_stats['magazines'] + 1)
-                        self.send_message(channel, self.pm(user, f"You just added an extra magazine. [-{cost} XP] | Magazines: {channel_stats['magazines']}/{mags_max}"))
+                        await self.send_message(network, channel, self.pm(user, f"You just added an extra magazine. [-{cost} XP] | Magazines: {channel_stats['magazines']}/{mags_max}"))
                     else:
-                        self.send_message(channel, self.pm(user, f"You already have the maximum magazines."))
+                        await self.send_message(network, channel, self.pm(user, f"You already have the maximum magazines."))
                         channel_stats['xp'] += item['cost']  # Refund XP
                 elif item_id == 3:  # AP ammo: next 20 shots do +1 dmg vs golden (i.e., 2 total)
                     ap = channel_stats.get('ap_shots', 0)
                     ex = channel_stats.get('explosive_shots', 0)
                     if ap > 0 and ex == 0:
-                        self.send_notice(user, "AP ammo already active. Use it up before buying more.")
+                        await self.send_notice(network, user, "AP ammo already active. Use it up before buying more.")
                         channel_stats['xp'] += item['cost']
                     else:
                         switched = ex > 0
                         channel_stats['explosive_shots'] = 0
                         channel_stats['ap_shots'] = 20
                         if switched:
-                            self.send_message(channel, self.pm(user, f"You switched to AP ammo. Next 20 shots are AP. [-{cost} XP]"))
+                            await self.send_message(network, channel, self.pm(user, f"You switched to AP ammo. Next 20 shots are AP. [-{cost} XP]"))
                         else:
                             await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased AP ammo.', 'green')} Next 20 shots deal extra damage to golden ducks. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 4:  # Explosive ammo: next 20 shots do +1 dmg vs golden and boost accuracy
                     ap = channel_stats.get('ap_shots', 0)
                     ex = channel_stats.get('explosive_shots', 0)
                     if ex > 0 and ap == 0:
-                        self.send_notice(user, "Explosive ammo already active. Use it up before buying more.")
+                        await self.send_notice(network, user, "Explosive ammo already active. Use it up before buying more.")
                         channel_stats['xp'] += item['cost']
                     else:
                         switched = ap > 0
                         channel_stats['ap_shots'] = 0
                         channel_stats['explosive_shots'] = 20
                         if switched:
-                            self.send_message(channel, self.pm(user, f"You switched to explosive ammo. Next 20 shots are explosive. [-{cost} XP]"))
+                            await self.send_message(network, channel, self.pm(user, f"You switched to explosive ammo. Next 20 shots are explosive. [-{cost} XP]"))
                         else:
                             await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased explosive ammo.', 'green')} Next 20 shots deal extra damage to golden ducks. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                elif item_id == 6:  # Grease: 24h reliability boost
+                    now = time.time()
+                    duration = 24 * 3600
+                    if channel_stats.get('grease_until', 0) > now:
+                        await self.send_notice(network, user, "Grease already applied. Wait until it wears off to buy more.")
+                        channel_stats['xp'] += item['cost']
+                    else:
+                        channel_stats['grease_until'] = now + duration
+                        await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased grease.', 'green')} Your gun will jam half as often for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 7:  # Sight: next shot accuracy boost; cannot stack
                     if channel_stats.get('sight_next_shot', False):
-                        self.send_notice(user, "Sight already mounted for your next shot. Use it before buying more.")
+                        await self.send_notice(network, user, "Sight already mounted for your next shot. Use it before buying more.")
                         channel_stats['xp'] += item['cost']
                     else:
                         channel_stats['sight_next_shot'] = True
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased a sight.', 'green')} Your next shot will be more accurate. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 11:  # Sunglasses: 24h protection against mirror / reduce accident penalty
                     channel_stats['sunglasses_until'] = max(channel_stats.get('sunglasses_until', 0), time.time() + 24*3600)
-                    self.send_message(channel, self.pm(user, f"You put on sunglasses for 24h. You're protected against mirror glare. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"You put on sunglasses for 24h. You're protected against mirror glare. [-{cost} XP]"))
                 elif item_id == 12:  # Spare clothes: clear soaked if present
                     if channel_stats.get('soaked_until', 0) > time.time():
                         channel_stats['soaked_until'] = 0
-                        self.send_message(channel, self.pm(user, f"You change into spare clothes. You're no longer soaked. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"You change into spare clothes. You're no longer soaked. [-{cost} XP]"))
                     else:
-                        self.send_notice(user, "You're not soaked. Refunding XP.")
+                        await self.send_notice(network, user, "You're not soaked. Refunding XP.")
                         channel_stats['xp'] += item['cost']
                 elif item_id == 13:  # Brush for gun: unjam, clear sand, and small reliability buff for 24h
                     channel_stats['jammed'] = False
@@ -1405,58 +1452,58 @@ shop_ducks_detector = 50
                     if channel_stats.get('sand_until', 0) > time.time():
                         channel_stats['sand_until'] = 0
                     channel_stats['brush_until'] = max(channel_stats.get('brush_until', 0), time.time() + 24*3600)
-                    self.send_message(channel, self.pm(user, f"You clean your gun and remove sand. It feels smoother for 24h. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"You clean your gun and remove sand. It feels smoother for 24h. [-{cost} XP]"))
                 elif item_id == 14:  # Mirror: apply dazzle debuff to target unless countered by sunglasses (target required)
                     if len(args) < 2:
-                        self.send_notice(user, "Usage: !shop 14 <nick>")
+                        await self.send_notice(network, user, "Usage: !shop 14 <nick>")
                         channel_stats['xp'] += item['cost']
                     else:
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel)
                         # If target has sunglasses active, mirror is countered
                         if tstats.get('sunglasses_until', 0) > time.time():
-                            self.send_message(channel, self.pm(user, f"{target} is wearing sunglasses. The mirror has no effect."))
+                            await self.send_message(network, channel, self.pm(user, f"{target} is wearing sunglasses. The mirror has no effect."))
                             channel_stats['xp'] += item['cost']
                         else:
                             tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
-                            self.send_message(channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced. [-{cost} XP]"))
+                            await self.send_message(network, channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced. [-{cost} XP]"))
                 elif item_id == 15:  # Handful of sand: victim reliability worse for 1h (target required)
                     if len(args) < 2:
-                        self.send_notice(user, "Usage: !shop 15 <nick>")
+                        await self.send_notice(network, user, "Usage: !shop 15 <nick>")
                         channel_stats['xp'] += item['cost']
                     else:
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel)
                         tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 3600)
-                        self.send_message(channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h. [-{cost} XP]"))
                 elif item_id == 16:  # Water bucket: soak target for 1h (target required)
                     if len(args) < 2:
-                        self.send_notice(user, "Usage: !shop 16 <nick>")
+                        await self.send_notice(network, user, "Usage: !shop 16 <nick>")
                         channel_stats['xp'] += item['cost']
                     else:
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel)
                         tstats['soaked_until'] = max(tstats.get('soaked_until', 0), time.time() + 3600)
-                        self.send_message(channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes. [-{cost} XP]"))
                 elif item_id == 17:  # Sabotage: jam target immediately (target required)
                     if len(args) < 2:
-                        self.send_notice(user, "Usage: !shop 17 <nick>")
+                        await self.send_notice(network, user, "Usage: !shop 17 <nick>")
                         channel_stats['xp'] += item['cost']
                     else:
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel)
                         tstats['jammed'] = True
-                        self.send_message(channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. [-{cost} XP]"))
                 elif item_id == 18:  # Life insurance: protect against confiscation for 24h
                     channel_stats['life_insurance_until'] = max(channel_stats.get('life_insurance_until', 0), time.time() + 24*3600)
-                    self.send_message(channel, self.pm(user, f"You purchase life insurance. Confiscations will be prevented for 24h. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"You purchase life insurance. Confiscations will be prevented for 24h. [-{cost} XP]"))
                 elif item_id == 19:  # Liability insurance: reduce penalties by 50% for 24h
                     channel_stats['liability_insurance_until'] = max(channel_stats.get('liability_insurance_until', 0), time.time() + 24*3600)
-                    self.send_message(channel, self.pm(user, f"You purchase liability insurance. Penalties reduced by 50% for 24h. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"You purchase liability insurance. Penalties reduced by 50% for 24h. [-{cost} XP]"))
                 elif item_id == 22:  # Upgrade Magazine: increase clip size (level 1-5), dynamic cost per level
                     current_level = channel_stats.get('mag_upgrade_level', 0)
                     if current_level >= 5:
-                        self.send_message(channel, self.pm(user, "Your magazine is already fully upgraded."))
+                        await self.send_message(network, channel, self.pm(user, "Your magazine is already fully upgraded."))
                         channel_stats['xp'] += cost
                     else:
                         next_level = current_level + 1
@@ -1465,35 +1512,44 @@ shop_ducks_detector = 50
                         self.apply_level_bonuses(channel_stats)
                         # Top off ammo by 1 up to new clip size
                         channel_stats['ammo'] = min(channel_stats['clip_size'], channel_stats['ammo'] + 1)
-                        self.send_message(channel, self.pm(user, f"Upgrade applied. Magazine capacity increased to {channel_stats['clip_size']}. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"Upgrade applied. Magazine capacity increased to {channel_stats['clip_size']}. [-{cost} XP]"))
                 elif item_id == 10:  # Four-leaf clover: +N XP per duck for 24h; single active at a time
                     now = time.time()
                     duration = 24 * 3600
                     if channel_stats.get('clover_until', 0) > now:
                         # Already active; refund
-                        self.send_notice(user, "Four-leaf clover already active. Wait until it expires to buy again.")
+                        await self.send_notice(network, user, "Four-leaf clover already active. Wait until it expires to buy again.")
                         channel_stats['xp'] += item['cost']
                     else:
                         bonus = random.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
                         channel_stats['clover_bonus'] = bonus
                         channel_stats['clover_until'] = now + duration
-                        self.send_message(channel, self.pm(user, f"Four-leaf clover activated for 24h. +{bonus} XP per duck. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"Four-leaf clover activated for 24h. +{bonus} XP per duck. [-{cost} XP]"))
                 elif item_id == 8:  # Infrared detector: 24h trigger lock window when no duck, limited uses
                     now = time.time()
                     duration = 24 * 3600
                     # Disallow purchase if active and has uses remaining
                     if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
-                        self.send_notice(user, "Infrared detector already active. Use it up before buying more.")
+                        await self.send_notice(network, user, "Infrared detector already active. Use it up before buying more.")
                         channel_stats['xp'] += item['cost']
                     else:
                         new_until = now + duration
                         channel_stats['infrared_until'] = new_until
                         channel_stats['infrared_uses'] = 6
                         hours = duration // 3600
-                        self.send_message(channel, self.pm(user, f"Infrared detector enabled for {hours}h00m. Trigger lock has 6 uses. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"Infrared detector enabled for {hours}h00m. Trigger lock has 6 uses. [-{cost} XP]"))
+                elif item_id == 9:  # Silencer: 24h protection against scaring ducks
+                    now = time.time()
+                    duration = 24 * 3600
+                    if channel_stats.get('silencer_until', 0) > now:
+                        await self.send_notice(network, user, "Silencer already active. Wait until it wears off to buy more.")
+                        channel_stats['xp'] += item['cost']
+                    else:
+                        channel_stats['silencer_until'] = now + duration
+                        await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased a silencer.', 'green')} It will prevent frightening ducks for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 20:  # Bread: next 20 befriends count double vs golden
                     if channel_stats.get('bread_uses', 0) > 0:
-                        self.send_notice(user, "Bread already active. Use it up before buying more.")
+                        await self.send_notice(network, user, "Bread already active. Use it up before buying more.")
                         channel_stats['xp'] += item['cost']
                     else:
                         channel_stats['bread_uses'] = 20
@@ -1505,27 +1561,27 @@ shop_ducks_detector = 50
                         mags_max = channel_stats.get('magazines_max', 2)
                         channel_stats['ammo'] = clip_size
                         channel_stats['magazines'] = mags_max
-                        self.send_message(channel, self.pm(user, f"You repurchased your confiscated gun. [-{cost} XP] | Ammo: {clip_size}/{clip_size} | Magazines: {mags_max}/{mags_max}"))
+                        await self.send_message(network, channel, self.pm(user, f"You repurchased your confiscated gun. [-{cost} XP] | Ammo: {clip_size}/{clip_size} | Magazines: {mags_max}/{mags_max}"))
                     else:
-                        self.send_message(channel, f"Your gun is not confiscated.")
+                        await self.send_message(network, channel, f"Your gun is not confiscated.")
                         channel_stats['xp'] += item['cost']  # Refund XP
                 elif item_id == 21:  # Ducks detector (shop: full 24h duration)
                     now = time.time()
                     duration = 24 * 3600
                     current_until = channel_stats.get('ducks_detector_until', 0)
                     channel_stats['ducks_detector_until'] = max(current_until, now + duration)
-                    self.send_message(channel, self.pm(user, f"Ducks detector activated for 24h. You'll get a 60s pre-spawn notice. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"Ducks detector activated for 24h. You'll get a 60s pre-spawn notice. [-{cost} XP]"))
                 elif item_id == 23:  # Extra Magazine: increase magazines_max (level 1-5), cost scales
                     current_level = channel_stats.get('mag_capacity_level', 0)
                     if current_level >= 5:
-                        self.send_message(channel, self.pm(user, "You already carry the maximum extra magazines."))
+                        await self.send_message(network, channel, self.pm(user, "You already carry the maximum extra magazines."))
                         channel_stats['xp'] += item['cost']
                     else:
                         channel_stats['mag_capacity_level'] = current_level + 1
                         channel_stats['magazines_max'] = channel_stats.get('magazines_max', 2) + 1
                         # Grant one extra empty magazine immediately
                         channel_stats['magazines'] = min(channel_stats['magazines_max'], channel_stats['magazines'] + 1)
-                        self.send_message(channel, self.pm(user, f"Upgrade applied. You can now carry {channel_stats['magazines_max']} magazines. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"Upgrade applied. You can now carry {channel_stats['magazines_max']} magazines. [-{cost} XP]"))
                         item['cost'] = min(1000, item['cost'] + 200)
                 else:
                     # For other items, just show generic message
@@ -1538,16 +1594,16 @@ shop_ducks_detector = 50
                 self.save_player_data()
                 
             except ValueError:
-                self.send_notice(user, "Invalid item ID.")
+                await self.send_notice(network, user, "Invalid item ID.")
     
-    def handle_duckstats(self, user, channel, args):
+    async def handle_duckstats(self, user, channel, args, network: NetworkConnection):
         """Handle !duckstats command"""
         if not self.check_authentication(user):
             return
         
         target_user = args[0] if args else user
         if target_user not in self.players:
-            self.send_notice(user, "I do not know any hunter with that name.")
+            await self.send_notice(network, user, "I do not know any hunter with that name.")
             return
         
         player = self.players[target_user]
@@ -1652,9 +1708,9 @@ shop_ducks_detector = 50
         if parts:
             stats_text += "  |  Effects: " + " | ".join(parts)
         
-        self.send_notice(user, stats_text)
+        await self.send_notice(network, user, stats_text)
     
-    def handle_topduck(self, user, channel, args):
+    async def handle_topduck(self, user, channel, args, network: NetworkConnection):
         """Handle !topduck command"""
         if not self.check_authentication(user):
             return
@@ -1699,24 +1755,24 @@ shop_ducks_detector = 50
                     player_list.append(f"{player_name} with {xp} total xp")
                 top_text += " | ".join(player_list)
         
-        self.send_message(channel, top_text)
+        await self.send_message(network, channel, top_text)
     
-    def handle_duckhelp(self, user, channel):
+    async def handle_duckhelp(self, user, channel, network: NetworkConnection):
         """Handle !duckhelp command"""
         help_text = "Duck Hunt Commands: !bang, !bef, !reload, !shop, !duckstats, !topduck [duck], !lastduck, !duckhelp"
-        self.send_notice(user, help_text)
+        await self.send_notice(network, user, help_text)
     
-    def handle_lastduck(self, user, channel):
+    async def handle_lastduck(self, user, channel, network: NetworkConnection):
         """Handle !lastduck command"""
         if not self.check_authentication(user):
-            self.send_message(channel, f"{user}: You must be authenticated to play.")
+            await self.send_message(network, channel, f"{user}: You must be authenticated to play.")
             return
         
         player = self.get_player(user)
         channel_stats = self.get_channel_stats(user, channel)
         
         if not channel_stats['last_duck_time']:
-            self.send_message(channel, f"{user}: You haven't shot any ducks in {channel} yet.")
+            await self.send_message(network, channel, f"{user}: You haven't shot any ducks in {channel} yet.")
             return
         
         current_time = time.time()
@@ -1734,48 +1790,58 @@ shop_ducks_detector = 50
         if seconds > 0 or not time_str:
             time_str += f"{seconds} second{'s' if seconds != 1 else ''}"
         
-        self.send_message(channel, f"{user} > The last duck was seen in {channel}: {time_str} ago.")
+        await self.send_message(network, channel, f"{user} > The last duck was seen in {channel}: {time_str} ago.")
     
-    def handle_admin_command(self, user, channel, command, args):
+    async def handle_admin_command(self, user, channel, command, args, network: NetworkConnection):
         """Handle admin commands"""
-        if not self.is_admin(user) and not self.is_owner(user):
-            self.send_notice(user, "You don't have permission to use admin commands.")
+        if not self.is_admin(user, network) and not self.is_owner(user, network):
+            await self.send_notice(network, user, "You don't have permission to use admin commands.")
             return
         
         if command == "spawnduck":
             count = 1
             if args and args[0].isdigit():
-                count = min(int(args[0]), self.max_ducks)
+                count = min(int(args[0]), self.get_network_max_ducks(network))
             
             spawned = 0
             norm_channel = self.normalize_channel(channel)
-            with self.ducks_lock:
+            async with self.ducks_lock:
                 if norm_channel not in self.active_ducks:
                     self.active_ducks[norm_channel] = []
-                remaining_capacity = max(0, self.max_ducks - len(self.active_ducks[norm_channel]))
+                remaining_capacity = max(0, self.get_network_max_ducks(network) - len(self.active_ducks[norm_channel]))
             to_spawn = min(count, remaining_capacity)
             for _ in range(to_spawn):
                 # Do not push back the automatic timer when spawning manually
-                self.spawn_duck(channel, schedule=False)
+                await self.spawn_duck(network, channel, schedule=False)
                 spawned += 1
             
             if spawned > 0:
                 self.log_action(f"{user} spawned {spawned} duck(s) in {channel}.")
             else:
-                self.send_notice(user, f"Cannot spawn ducks in {channel} - already at maximum ({self.max_ducks})")
+                await self.send_notice(network, user, f"Cannot spawn ducks in {channel} - already at maximum ({self.get_network_max_ducks(network)})")
         elif command == "spawngold":
             # Spawn a golden duck (respect per-channel capacity)
-            with self.ducks_lock:
+            async with self.ducks_lock:
                 norm_channel = self.normalize_channel(channel)
                 if norm_channel not in self.active_ducks:
                     self.active_ducks[norm_channel] = []
-                if len(self.active_ducks[norm_channel]) >= self.max_ducks:
-                    self.send_notice(user, f"Cannot spawn golden duck in {channel} - already at maximum ({self.max_ducks})")
+                if len(self.active_ducks[norm_channel]) >= self.get_network_max_ducks(network):
+                    await self.send_notice(network, user, f"Cannot spawn golden duck in {channel} - already at maximum ({self.get_network_max_ducks(network)})")
                     return
                 golden_duck = {'golden': True, 'health': 5, 'spawn_time': time.time(), 'revealed': False}
                 self.active_ducks[norm_channel].append(golden_duck)
-            duck_art = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· \\_O<   QUACK"
-            self.send_message(channel, duck_art)
+            # Create duck art with custom coloring: dust=gray, duck=yellow, QUACK=red/green/gold
+            dust = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· "
+            duck = "\\_O<"
+            quack = "   QUACK"
+            
+            # Color the parts separately
+            dust_colored = self.colorize(dust, 'grey')
+            duck_colored = self.colorize(duck, 'yellow')
+            quack_colored = f"   {self.colorize('Q', 'red')}{self.colorize('U', 'green')}{self.colorize('A', 'yellow')}{self.colorize('C', 'red')}{self.colorize('K', 'green')}"
+            
+            duck_art = f"{dust_colored}{duck_colored}{quack_colored}"
+            await self.send_message(network, channel, duck_art)
             self.log_action(f"{user} spawned golden duck in {channel}")
             # Do not reset per-channel timer on manual spawns
         elif command == "rearm" and args:
@@ -1787,7 +1853,7 @@ shop_ducks_detector = 50
                 mags_max = channel_stats.get('magazines_max', 2)
                 channel_stats['ammo'] = clip_size
                 channel_stats['magazines'] = mags_max
-                self.send_message(channel, f"{target} has been rearmed.")
+                await self.send_message(network, channel, f"{target} has been rearmed.")
                 self.save_player_data()
         elif command == "disarm" and args:
             target = args[0]
@@ -1796,25 +1862,25 @@ shop_ducks_detector = 50
                 channel_stats['confiscated'] = True
                 # Optionally also empty ammo
                 channel_stats['ammo'] = 0
-                self.send_message(channel, f"{target} has been disarmed.")
+                await self.send_message(network, channel, f"{target} has been disarmed.")
                 self.save_player_data()
     
-    def handle_owner_command(self, user, command, args):
+    async def handle_owner_command(self, user, command, args, network: NetworkConnection):
         """Handle owner commands via PRIVMSG"""
         self.log_action(f"handle_owner_command called: user={user}, command={command}")
-        if not self.is_owner(user):
+        if not self.is_owner(user, network):
             self.log_action(f"User {user} is not owner")
-            self.send_notice(user, "You don't have permission to use owner commands.")
+            await self.send_notice(network, user, "You don't have permission to use owner commands.")
             return
         self.log_action(f"User {user} is owner, processing command {command}")
         
         if command == "add" and len(args) >= 2:
             if args[0] == "owner":
                 # Add owner logic
-                self.send_notice(user, f"Added {args[1]} to owner list.")
+                await self.send_notice(network, user, f"Added {args[1]} to owner list.")
             elif args[0] == "admin":
                 # Add admin logic
-                self.send_notice(user, f"Added {args[1]} to admin list.")
+                await self.send_notice(network, user, f"Added {args[1]} to admin list.")
         elif command == "disarm" and len(args) >= 2:
             target = args[0]
             channel = args[1]
@@ -1822,35 +1888,36 @@ shop_ducks_detector = 50
                 channel_stats = self.get_channel_stats(target, channel)
                 channel_stats['confiscated'] = True
                 channel_stats['ammo'] = 0
-                self.send_notice(user, f"{target} has been disarmed in {channel}.")
+                await self.send_notice(network, user, f"{target} has been disarmed in {channel}.")
                 self.save_player_data()
         elif command == "reload":
             self.load_config("duckhunt.conf")
-            self.send_notice(user, "Configuration reloaded.")
+            # Note: This is a global command, so we can't send to a specific network
+            # For now, just log the reload
         elif command == "restart":
             self.log_action(f"Restart command received from {user}")
-            self.send_notice(user, "Restarting bot...")
+            # Note: This is a global command, so we can't send to a specific network
+            # For now, just log the restart
             self.log_action(f"{user} restarted the bot.")
             # Save data before restart
             self.save_player_data()
             # Close connection and exit
-            self.sock.close()
+            # Note: This is a global command, so we can't close a specific network socket
             exit(0)
         elif command == "join" and args:
             channel = args[0]
-            self.send(f"JOIN {channel}")
-            self.channels[channel] = set()
-            # Create a schedule immediately for the newly joined channel
-            try:
-                self.schedule_channel_next_duck(channel)
-            except Exception as e:
-                self.log_action(f"Failed to schedule on owner join for {channel}: {e}")
-            self.send_notice(user, f"Joined {channel}")
+            # Join the channel on the network where the command was received
+            await self.send_network(network, f"JOIN {channel}")
+            network.channels[channel] = set()
+            self.log_action(f"Joined {channel} on {network.name} by {user}")
+            # Schedule a duck spawn for the new channel
+            await self.schedule_channel_next_duck(network, channel)
+            await self.send_notice(network, user, f"Joined {channel} on {network.name}")
         elif command == "clear" and args:
             channel = args[0]
-            if channel not in self.channels:
-                self.send_notice(user, f"Channel {channel} not found.")
-                return
+            # Note: This is a global command, so we can't check a specific network
+            # For now, just log the clear request
+            self.log_action(f"Clear command received for {channel} from {user}")
             
             norm_channel = self.normalize_channel(channel)
             # Clear all player data for this channel (normalize player keys)
@@ -1864,46 +1931,46 @@ shop_ducks_detector = 50
                     cleared_count += 1
             
             # Clear ducks for this channel
-            with self.ducks_lock:
+            async with self.ducks_lock:
                 if norm_channel in self.active_ducks:
                     del self.active_ducks[norm_channel]
             
-            self.send_notice(user, f"Cleared all data for {channel} ({cleared_count} players affected).")
+            # Note: This is a global command, so we can't send to a specific network
+            # For now, just log the clear completion
             self.log_action(f"{user} cleared all data for {channel}")
             self.save_player_data()
         elif command == "part" and args:
             channel = args[0]
-            self.send(f"PART {channel}")
-            if channel in self.channels:
-                del self.channels[channel]
-            self.send_notice(user, f"Parted {channel}")
+            # Note: This is a global command, so we can't part from a specific network
+            # For now, just log the part request
+            self.log_action(f"Part command received for {channel} from {user}")
         elif command == "nextduck":
             # Owner-only: report next scheduled spawn for this channel
             now = time.time()
             # Match schedule key by normalized channel to avoid trailing-space mismatch
             norm = self.normalize_channel(channel)
             key = None
-            for k in list(self.channel_next_spawn.keys()):
+            for k in list(network.channel_next_spawn.keys()):
                 if self.normalize_channel(k) == norm:
                     key = k
                     break
-            next_time = self.channel_next_spawn.get(key) if key else None
+            next_time = network.channel_next_spawn.get(key) if key else None
             if not next_time:
                 # No schedule exists yet - create one but don't show it as immediate
-                self.schedule_channel_next_duck(channel, allow_immediate=False)
+                await self.schedule_channel_next_duck(network, channel, allow_immediate=False)
                 # Get the newly created schedule
-                for k in list(self.channel_next_spawn.keys()):
+                for k in list(network.channel_next_spawn.keys()):
                     if self.normalize_channel(k) == norm:
                         key = k
                         break
-                next_time = self.channel_next_spawn.get(key) if key else None
+                next_time = network.channel_next_spawn.get(key) if key else None
                 if not next_time:
-                    self.send_message(channel, f"{user} > No spawn scheduled yet for {channel}.")
+                    await self.send_message(network, channel, f"{user} > No spawn scheduled yet for {channel}.")
                     return
             remaining = max(0, int(next_time - now))
             minutes = remaining // 60
             seconds = remaining % 60
-            self.send_message(channel, f"{user} > Next duck in {minutes}m{seconds:02d}s.")
+            await self.send_message(network, channel, f"{user} > Next duck in {minutes}m{seconds:02d}s.")
     
     async def process_message(self, data, network: NetworkConnection):
         """Process incoming IRC message"""
@@ -1970,13 +2037,13 @@ shop_ducks_detector = 50
             if match:
                 user = match.group(1)
                 channel = match.group(2)
-                if channel in self.channels:
-                    self.channels[channel].add(user)
+                if channel in network.channels:
+                    network.channels[channel].add(user)
                 self.log_message("JOIN", f"{user} joined {channel}")
                 # If we (the bot) joined, ensure a schedule is created
                 try:
-                    if hasattr(self, 'nick') and user == self.nick:
-                        self.schedule_channel_next_duck(channel)
+                    if user == network.nick:
+                        await self.schedule_channel_next_duck(network, channel)
                 except Exception as e:
                     self.log_action(f"Failed to schedule on self JOIN for {channel}: {e}")
         
@@ -1986,8 +2053,8 @@ shop_ducks_detector = 50
             if match:
                 user = match.group(1)
                 channel = match.group(2).lstrip(':')
-                if channel in self.channels:
-                    self.channels[channel].discard(user)
+                if channel in network.channels:
+                    network.channels[channel].discard(user)
                 self.log_message("PART", f"{user} left {channel}")
         
         elif "QUIT" in data:
@@ -1996,8 +2063,8 @@ shop_ducks_detector = 50
             if match:
                 user = match.group(1)
                 # Remove from all channels
-                for channel in self.channels:
-                    self.channels[channel].discard(user)
+                for channel in network.channels:
+                    network.channels[channel].discard(user)
                 self.log_message("QUIT", f"{user} quit")
         
         else:
@@ -2017,8 +2084,8 @@ shop_ducks_detector = 50
             if command == 'nextduck':
                 pass  # don't create schedule here; handled below without immediate spawn
             else:
-                if not self.channel_next_spawn.get(channel):
-                    self.schedule_channel_next_duck(channel)
+                if not network.channel_next_spawn.get(channel):
+                    await self.schedule_channel_next_duck(network, channel)
         except Exception as e:
             self.log_action(f"Lazy schedule init failed for {channel}: {e}")
 
@@ -2040,13 +2107,13 @@ shop_ducks_detector = 50
         elif command == "shop":
             await self.handle_shop(user, channel, args, network)
         elif command == "duckstats":
-            self.handle_duckstats(user, channel, args)
+            await self.handle_duckstats(user, channel, args, network)
         elif command == "topduck":
-            self.handle_topduck(user, channel, args)
+            await self.handle_topduck(user, channel, args, network)
         elif command == "lastduck":
-            self.handle_lastduck(user, channel)
+            await self.handle_lastduck(user, channel, network)
         elif command == "duckhelp":
-            self.handle_duckhelp(user, channel)
+            await self.handle_duckhelp(user, channel, network)
         elif command == "nextduck":
             # Owner-only, invoked in channel
             if not self.is_owner(user, network):
@@ -2076,10 +2143,10 @@ shop_ducks_detector = 50
             seconds = remaining % 60
             await self.send_message(network, channel, f"{user} > Next duck in {minutes}m{seconds:02d}s.")
         elif command in ["spawnduck", "spawngold", "rearm", "disarm"]:
-            self.handle_admin_command(user, channel, command, args)
+            await self.handle_admin_command(user, channel, command, args, network)
 
     # --- Loot System ---
-    def apply_weighted_loot(self, user: str, channel: str, channel_stats: dict) -> None:
+    async def apply_weighted_loot(self, user: str, channel: str, channel_stats: dict, network: NetworkConnection) -> None:
         """Weighted random loot based on historical drop rates. Applies effects and announces."""
         # Define loot weights (sum does not need to be 1)
         loot = [
@@ -2114,130 +2181,130 @@ shop_ducks_detector = 50
         clip_size = channel_stats.get('clip_size', 10)
         mags_max = channel_stats.get('magazines_max', 2)
 
-        def say(msg: str) -> None:
-            self.send_message(channel, self.pm(user, msg))
+        async def say(msg: str) -> None:
+            await self.send_message(network, channel, self.pm(user, msg))
 
         if choice == "extra_bullet":
             if channel_stats['ammo'] < clip_size:
                 channel_stats['ammo'] = min(clip_size, channel_stats['ammo'] + 1)
-                say(f"By searching the bushes, you find an extra bullet! | Ammo: {channel_stats['ammo']}/{clip_size}")
+                await say(f"By searching the bushes, you find an extra bullet! | Ammo: {channel_stats['ammo']}/{clip_size}")
             else:
                 xp = 7
                 channel_stats['xp'] += xp
-                say(f"By searching the bushes, you find an extra bullet! Your magazine is full, so you gain {xp} XP instead.")
+                await say(f"By searching the bushes, you find an extra bullet! Your magazine is full, so you gain {xp} XP instead.")
         elif choice == "extra_mag":
             if channel_stats['magazines'] < mags_max:
                 channel_stats['magazines'] = min(mags_max, channel_stats['magazines'] + 1)
-                say(f"By searching the bushes, you find an extra ammo clip! | Magazines: {channel_stats['magazines']}/{mags_max}")
+                await say(f"By searching the bushes, you find an extra ammo clip! | Magazines: {channel_stats['magazines']}/{mags_max}")
             else:
                 xp = 20
                 channel_stats['xp'] += xp
-                say(f"By searching the bushes, you find an extra ammo clip! You already have maximum magazines, so you gain {xp} XP instead.")
+                await say(f"By searching the bushes, you find an extra ammo clip! You already have maximum magazines, so you gain {xp} XP instead.")
         elif choice == "sight_next":
             # If already active, convert to XP equal to shop price (shop_sight)
             if channel_stats.get('sight_next_shot', False):
-                sight_cost = int(self.config.get('shop_sight', 6))
+                sight_cost = int(self.config.get('DEFAULT', 'shop_sight', fallback=6))
                 channel_stats['xp'] += sight_cost
-                say(f"You find a sight, but you already have one mounted for your next shot. [+{sight_cost} xp]")
+                await say(f"You find a sight, but you already have one mounted for your next shot. [+{sight_cost} xp]")
             else:
                 channel_stats['sight_next_shot'] = True
-                say("By searching the bushes, you find a sight for your gun! Your next shot will be more accurate.")
+                await say("By searching the bushes, you find a sight for your gun! Your next shot will be more accurate.")
         elif choice == "silencer":
             if channel_stats.get('silencer_until', 0) > now:
-                cost = int(self.config.get('shop_silencer', 5))
+                cost = int(self.config.get('DEFAULT', 'shop_silencer', fallback=5))
                 channel_stats['xp'] += cost
-                say(f"You find a silencer, but you already have one active. [+{cost} xp]")
+                await say(f"You find a silencer, but you already have one active. [+{cost} xp]")
             else:
                 channel_stats['silencer_until'] = now + day
-                say("By searching the bushes, you find a silencer! It will prevent frightening ducks for 24h.")
+                await say("By searching the bushes, you find a silencer! It will prevent frightening ducks for 24h.")
         elif choice == "ducks_detector":
             if channel_stats.get('ducks_detector_until', 0) > now:
-                cost = int(self.config.get('shop_ducks_detector', 50))
+                cost = int(self.config.get('DEFAULT', 'shop_ducks_detector', fallback=50))
                 channel_stats['xp'] += cost
-                say(f"You find a ducks detector, but you already have one active. [+{cost} xp]")
+                await say(f"You find a ducks detector, but you already have one active. [+{cost} xp]")
             else:
                 channel_stats['ducks_detector_until'] = now + day
-                say("By searching the bushes, you find a ducks detector! You'll get a 60s pre-spawn notice for 24h.")
+                await say("By searching the bushes, you find a ducks detector! You'll get a 60s pre-spawn notice for 24h.")
         elif choice == "ap_ammo":
             if channel_stats.get('ap_shots', 0) > 0:
-                xp = int(self.config.get('shop_ap_ammo', 15))
+                xp = int(self.config.get('DEFAULT', 'shop_ap_ammo', fallback=15))
                 channel_stats['xp'] += xp
-                say(f"You find AP ammo, but you already have some. [+{xp} xp]")
+                await say(f"You find AP ammo, but you already have some. [+{xp} xp]")
             else:
                 channel_stats['explosive_shots'] = 0
                 channel_stats['ap_shots'] = 20
-                say("By searching the bushes, you find AP ammo! Next 20 shots deal extra damage to golden ducks.")
+                await say("By searching the bushes, you find AP ammo! Next 20 shots deal extra damage to golden ducks.")
         elif choice == "explosive_ammo":
             if channel_stats.get('explosive_shots', 0) > 0:
-                xp = int(self.config.get('shop_explosive_ammo', 25))
+                xp = int(self.config.get('DEFAULT', 'shop_explosive_ammo', fallback=25))
                 channel_stats['xp'] += xp
-                say(f"You find explosive ammo, but you already have some. [+{xp} xp]")
+                await say(f"You find explosive ammo, but you already have some. [+{xp} xp]")
             else:
                 channel_stats['ap_shots'] = 0
                 channel_stats['explosive_shots'] = 20
-                say("By searching the bushes, you find explosive ammo! Next 20 shots deal extra damage to golden ducks.")
+                await say("By searching the bushes, you find explosive ammo! Next 20 shots deal extra damage to golden ducks.")
         elif choice == "grease":
             if channel_stats.get('grease_until', 0) > now:
-                cost = int(self.config.get('shop_grease', 8))
+                cost = int(self.config.get('DEFAULT', 'shop_grease', fallback=8))
                 channel_stats['xp'] += cost
-                say(f"You find grease, but you already have some applied. [+{cost} xp]")
+                await say(f"You find grease, but you already have some applied. [+{cost} xp]")
             else:
                 channel_stats['grease_until'] = now + day
-                say("By searching the bushes, you find grease! Your gun will jam half as often for 24h.")
+                await say("By searching the bushes, you find grease! Your gun will jam half as often for 24h.")
         elif choice == "sunglasses":
             if channel_stats.get('sunglasses_until', 0) > now:
-                cost = int(self.config.get('shop_sunglasses', 5))
+                cost = int(self.config.get('DEFAULT', 'shop_sunglasses', fallback=5))
                 channel_stats['xp'] += cost
-                say(f"You find sunglasses, but you're already wearing some. [+{cost} xp]")
+                await say(f"You find sunglasses, but you're already wearing some. [+{cost} xp]")
             else:
                 channel_stats['sunglasses_until'] = now + day
-                say("By searching the bushes, you find sunglasses! You're protected against bedazzlement for 24h.")
+                await say("By searching the bushes, you find sunglasses! You're protected against bedazzlement for 24h.")
         elif choice == "infrared":
             if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
-                cost = int(self.config.get('shop_infrared_detector', 15))
+                cost = int(self.config.get('DEFAULT', 'shop_infrared_detector', fallback=15))
                 channel_stats['xp'] += cost
-                say(f"You find an infrared detector, but yours is still active. [+{cost} xp]")
+                await say(f"You find an infrared detector, but yours is still active. [+{cost} xp]")
             else:
                 channel_stats['infrared_until'] = now + day
                 channel_stats['infrared_uses'] = max(channel_stats.get('infrared_uses', 0), 6)
-                say("By searching the bushes, you find an infrared detector! Trigger locks when no duck (6 uses, 24h).")
+                await say("By searching the bushes, you find an infrared detector! Trigger locks when no duck (6 uses, 24h).")
         elif choice == "wallet_150xp":
             xp = 150
             channel_stats['xp'] += xp
             # Try to pick a random victim name from channel
             victim = None
-            if channel in self.channels and self.channels[channel]:
-                victim = random.choice(list(self.channels[channel]))
+            if channel in network.channels and network.channels[channel]:
+                victim = random.choice(list(network.channels[channel]))
             owner_text = f" {victim}'s" if victim else " a"
-            say(f"By searching the bushes, you find{owner_text} lost wallet! [+{xp} xp]")
+            await say(f"By searching the bushes, you find{owner_text} lost wallet! [+{xp} xp]")
         elif choice == "hunting_mag":
             if channel_stats['magazines'] >= mags_max:
                 xp_options = [10, 20, 40, 50, 100]
                 xp = random.choice(xp_options)
                 channel_stats['xp'] += xp
-                say(f"By searching the bushes, you find a hunting magazine! You already have maximum magazines, so you gain {xp} XP instead.")
+                await say(f"By searching the bushes, you find a hunting magazine! You already have maximum magazines, so you gain {xp} XP instead.")
             else:
                 channel_stats['magazines'] = min(mags_max, channel_stats['magazines'] + 1)
-                say(f"By searching the bushes, you find a hunting magazine! | Magazines: {channel_stats['magazines']}/{mags_max}")
+                await say(f"By searching the bushes, you find a hunting magazine! | Magazines: {channel_stats['magazines']}/{mags_max}")
         elif choice == "clover":
             # If already active, convert to XP equal to shop price
             if channel_stats.get('clover_until', 0) > now:
-                clover_cost = int(self.config.get('shop_four_leaf_clover', 13))
+                clover_cost = int(self.config.get('DEFAULT', 'shop_four_leaf_clover', fallback=13))
                 channel_stats['xp'] += clover_cost
-                say(f"You find a four-leaf clover, but you already have its luck active. [+{clover_cost} xp]")
+                await say(f"You find a four-leaf clover, but you already have its luck active. [+{clover_cost} xp]")
             else:
                 options = [1, 3, 5, 7, 8, 9, 10]
                 bonus = random.choice(options)
                 channel_stats['clover_bonus'] = bonus
                 channel_stats['clover_until'] = max(channel_stats.get('clover_until', 0), now + day)
-                say(f"By searching the bushes, you find a four-leaf clover! +{bonus} XP per duck for 24h.")
+                await say(f"By searching the bushes, you find a four-leaf clover! +{bonus} XP per duck for 24h.")
         else:  # junk
             junk_items = [
                 "discarded tire", "old shoe", "creepy crawly", "pile of rubbish", "cigarette butt",
                 "broken compass", "expired hunting license", "rusty can", "tangled fishing line",
             ]
             junk = random.choice(junk_items)
-            say(f"By searching the bushes, you find a {junk}. It's worthless.")
+            await say(f"By searching the bushes, you find a {junk}. It's worthless.")
 
         self.save_player_data()
     
@@ -2259,7 +2326,7 @@ shop_ducks_detector = 50
         
         if command in ["add", "reload", "restart", "join", "part", "clear"]:
             self.log_action(f"Calling handle_owner_command for {command}")
-            self.handle_owner_command(user, command, args)
+            await self.handle_owner_command(user, command, args, network)
     
     async def run(self):
         """Main bot loop"""
@@ -2278,7 +2345,7 @@ shop_ducks_detector = 50
         
         while True:
             try:
-                data = await network.sock.recv(1024)
+                data = await asyncio.get_event_loop().sock_recv(network.sock, 1024)
                 if data:
                     # Process each line
                     for line in data.decode('utf-8').split('\r\n'):
@@ -2354,7 +2421,7 @@ shop_ducks_detector = 50
                 self.log_action(f"Error: {e}")
                 break
         
-        self.sock.close()
+        network.sock.close()
 
 if __name__ == "__main__":
     bot = DuckHuntBot()
