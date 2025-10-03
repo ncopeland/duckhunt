@@ -8,10 +8,10 @@ Author: Nick Copeland
 License: GPLV2
 """
 
+import asyncio
 import socket
 import ssl
 import math
-import threading
 import time
 import re
 import random
@@ -21,34 +21,59 @@ import configparser
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
+class NetworkConnection:
+    """Represents a connection to a single IRC network"""
+    def __init__(self, name: str, config: dict):
+        self.name = name
+        self.config = config
+        self.sock = None
+        self.ssl_context = None
+        self.registered = False
+        self.motd_timeout_triggered = False
+        self.message_count = 0
+        self.motd_message_count = 0
+        self.nick = config['bot_nick'].split(',')[0]
+        self.channels = {}  # {channel: set(users)}
+        self.channel_next_spawn = {}
+        self.channel_pre_notice = {}
+        self.channel_notice_sent = {}
+        self.channel_last_spawn = {}
+        self.last_despawn_check = 0
+
 class DuckHuntBot:
     def __init__(self, config_file="duckhunt.conf"):
         self.config = self.load_config(config_file)
-        self.sock = None
-        self.ssl_context = None
         self.players = self.load_player_data()
-        self.channels = {}
         self.authenticated_users = set()
         self.channel_ducks = {}  # Per-channel duck lists: {channel: [{'spawn_time': time, 'golden': bool}]}
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
         self.version = "1.0_build36"
-        self.registered = False
-        self.motd_timeout_triggered = False
-        self.message_count = 0
-        self.motd_message_count = 0
-        self.last_despawn_check = 0
-        self.ducks_lock = threading.Lock()
+        self.ducks_lock = asyncio.Lock()
         # Next spawn pre-notice tracking
         self.next_spawn_channel = None
         self.pre_spawn_notice_time = None
         self.next_spawn_notice_sent = False
-        # Per-channel scheduling (guaranteed per-channel spawns)
-        self.channel_next_spawn = {}
-        self.channel_pre_notice = {}
-        self.channel_notice_sent = {}
-        self.channel_last_spawn = {}
+        
+        # Multi-network support
+        self.networks = {}  # {network_name: NetworkConnection}
+        self.setup_networks()
+    
+    def setup_networks(self):
+        """Setup network connections from config"""
+        # For now, create a single network from the main config
+        # Later this can be extended to support multiple networks
+        main_config = {
+            'server': self.config.get('server', 'irc.rizon.net/6667'),
+            'ssl': self.config.get('ssl', 'off'),
+            'bot_nick': self.config.get('bot_nick', 'DuckHuntBot'),
+            'channel': self.config.get('channel', '#default'),
+            'perform': self.config.get('perform', ''),
+            'owner': self.config.get('owner', ''),
+            'admin': self.config.get('admin', ''),
+        }
+        self.networks['main'] = NetworkConnection('main', main_config)
         
         # Game settings
         self.min_spawn = int(self.config.get('min_spawn', 600))
@@ -266,49 +291,50 @@ shop_ducks_detector = 50
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(f"{timestamp} DUCKHUNT {action}")
     
-    def send(self, message):
-        """Send message to IRC server"""
-        if self.sock:
-            self.sock.send(f"{message}\r\n".encode('utf-8'))
+    async def send_network(self, network: NetworkConnection, message):
+        """Send message to IRC server for a specific network"""
+        if network.sock:
+            await asyncio.get_event_loop().sock_sendall(network.sock, f"{message}\r\n".encode('utf-8'))
             self.log_message("SEND", message)
     
-    def send_message(self, channel, message):
+    async def send_message(self, network: NetworkConnection, channel, message):
         """Send message to channel"""
-        self.send(f"PRIVMSG {channel} :{message}")
+        await self.send_network(network, f"PRIVMSG {channel} :{message}")
     
-    def send_notice(self, user, message):
+    async def send_notice(self, network: NetworkConnection, user, message):
         """Send notice to user"""
-        self.send(f"NOTICE {user} :{message}")
+        await self.send_network(network, f"NOTICE {user} :{message}")
 
     def pm(self, user: str, message: str) -> str:
         """Prefix a message with the player's name as per UX convention."""
         return f"{user} - {message}"
     
-    def connect(self):
-        """Connect to IRC server"""
-        server_parts = self.config['server'].split('/')
+    async def connect_network(self, network: NetworkConnection):
+        """Connect to IRC server for a specific network"""
+        server_parts = network.config['server'].split('/')
         server = server_parts[0]
         port = int(server_parts[1]) if len(server_parts) > 1 else 6667
         
-        self.log_action(f"Connecting to {server}:{port}")
+        self.log_action(f"Connecting to {server}:{port} (network: {network.name})")
         
-        if self.config.get('ssl', 'off').lower() == 'on':
-            self.ssl_context = ssl.create_default_context()
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.sock = self.ssl_context.wrap_socket(self.sock, server_hostname=server)
+        if network.config.get('ssl', 'off').lower() == 'on':
+            network.ssl_context = ssl.create_default_context()
+            network.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            network.sock = network.ssl_context.wrap_socket(network.sock, server_hostname=server)
         else:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            network.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         
-        self.sock.connect((server, port))
+        # Use asyncio for non-blocking connect
+        await asyncio.get_event_loop().sock_connect(network.sock, (server, port))
         # Set socket to non-blocking mode
-        self.sock.setblocking(False)
+        network.sock.setblocking(False)
         
         # Send IRC handshake
-        bot_nicks = self.config['bot_nick'].split(',')
+        bot_nicks = network.config['bot_nick'].split(',')
         # Remember our current nick to detect self-joins
-        self.nick = bot_nicks[0]
-        self.send(f"USER DuckHuntBot 0 * :Duck Hunt Game Bot v{self.version}")
-        self.send(f"NICK {self.nick}")
+        network.nick = bot_nicks[0]
+        await self.send_network(network, f"USER DuckHuntBot 0 * :Duck Hunt Game Bot v{self.version}")
+        await self.send_network(network, f"NICK {network.nick}")
     
     def complete_registration(self):
         """Complete IRC registration by joining channels and running perform commands"""
@@ -2145,19 +2171,30 @@ shop_ducks_detector = 50
             self.log_action(f"Calling handle_owner_command for {command}")
             self.handle_owner_command(user, command, args)
     
-    def run(self):
+    async def run(self):
         """Main bot loop"""
-        self.connect()
+        # Connect to all networks
+        tasks = []
+        for network_name, network in self.networks.items():
+            task = asyncio.create_task(self.run_network(network))
+            tasks.append(task)
+        
+        # Run all networks concurrently
+        await asyncio.gather(*tasks)
+    
+    async def run_network(self, network: NetworkConnection):
+        """Run a single network connection"""
+        await self.connect_network(network)
         
         while True:
             try:
-                data = self.sock.recv(1024).decode('utf-8')
+                data = await network.sock.recv(1024)
                 if data:
                     # Process each line
-                    for line in data.split('\r\n'):
+                    for line in data.decode('utf-8').split('\r\n'):
                         if line.strip():
-                            self.process_message(line)
-                            self.message_count += 1
+                            await self.process_message(line, network)
+                            network.message_count += 1
                 
                 # Check for MOTD timeout (30 seconds) or message limit (100 messages)
                 if self.registered and hasattr(self, 'motd_start_time') and not hasattr(self, 'registration_complete') and not self.motd_timeout_triggered:
@@ -2172,16 +2209,16 @@ shop_ducks_detector = 50
                 # Per-channel pre-spawn notices and spawns (only after registration)
                 if hasattr(self, 'registration_complete'):
                     # Send any due pre-notices
-                    self.notify_duck_detector()
+                    await self.notify_duck_detector()
                     # Perform any due spawns per channel
                     now = time.time()
                     for ch, when in list(self.channel_next_spawn.items()):
                         if when and now >= when:
                             # If channel can't accept a new duck yet, defer by 5-15s
-                            if not self.can_spawn_duck(ch):
+                            if not await self.can_spawn_duck(ch):
                                 self.channel_next_spawn[ch] = now + random.randint(5, 15)
                                 continue
-                            self.spawn_duck(ch)
+                            await self.spawn_duck(ch)
                             # Clear consumed schedule entry to avoid double triggers
                             self.channel_next_spawn[ch] = None
                 
@@ -2201,24 +2238,24 @@ shop_ducks_detector = 50
                     
                     # Per-channel pre-spawn notices and spawns during idle
                     if hasattr(self, 'registration_complete'):
-                        self.notify_duck_detector()
+                        await self.notify_duck_detector()
                         now = time.time()
                         for ch, when in list(self.channel_next_spawn.items()):
                             if when and now >= when:
-                                if not self.can_spawn_duck(ch):
+                                if not await self.can_spawn_duck(ch):
                                     self.channel_next_spawn[ch] = now + random.randint(5, 15)
                                     continue
-                                self.spawn_duck(ch)
+                                await self.spawn_duck(ch)
                                 self.channel_next_spawn[ch] = None
                     
                     # Check for duck despawn (only after registration, throttled to once per second)
                     if hasattr(self, 'registration_complete'):
                         current_time = time.time()
                         if current_time - self.last_despawn_check >= 1.0:
-                            self.despawn_old_ducks()
+                            await self.despawn_old_ducks()
                             self.last_despawn_check = current_time
                     
-                    time.sleep(0.1)  # Small delay to prevent busy waiting
+                    await asyncio.sleep(0.1)  # Small delay to prevent busy waiting
                     continue
                 else:
                     self.log_action(f"Socket error: {e}")
@@ -2231,4 +2268,4 @@ shop_ducks_detector = 50
 
 if __name__ == "__main__":
     bot = DuckHuntBot()
-    bot.run()
+    asyncio.run(bot.run())
