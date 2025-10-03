@@ -50,7 +50,7 @@ class DuckHuntBot:
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
         # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
-        self.version = "1.0_build38"
+        self.version = "1.0_build39"
         self.ducks_lock = asyncio.Lock()
         # Next spawn pre-notice tracking
         self.next_spawn_channel = None
@@ -813,7 +813,10 @@ shop_extra_magazine = 400
             spawn_delay = random.randint(min_spawn, max_spawn)
             due_time = now + spawn_delay
         else:
+            # Calculate when the minimum spawn time would be satisfied
+            earliest_allowed = last + min_spawn
             latest_allowed = last + max_spawn
+            
             if now > latest_allowed:
                 # Overdue -> normally force immediate spawn, but avoid if probing
                 if allow_immediate:
@@ -821,11 +824,16 @@ shop_extra_magazine = 400
                 else:
                     # Set a short delay to avoid !nextduck causing an instant spawn
                     due_time = now + random.randint(10, 30)
-            else:
-                # Still within window; pick a random time between now and latest_allowed
+            elif now >= earliest_allowed:
+                # Minimum time has passed, schedule within remaining window
                 remaining_window = max(0, int(latest_allowed - now))
-                # Ensure at least 1s
                 spawn_delay = random.randint(1, max(1, remaining_window))
+                due_time = now + spawn_delay
+            else:
+                # Minimum time hasn't passed yet, wait until at least min_spawn has elapsed
+                min_remaining = int(earliest_allowed - now)
+                max_remaining = int(latest_allowed - now)
+                spawn_delay = random.randint(min_remaining, max_remaining)
                 due_time = now + spawn_delay
         network.channel_next_spawn[channel] = due_time
         network.channel_pre_notice[channel] = max(now, due_time - 60)
