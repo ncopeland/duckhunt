@@ -47,6 +47,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.channel_ducks = {}  # Per-channel duck lists: {channel: [{'spawn_time': time, 'golden': bool}]}
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
+        self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
         # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
         self.version = "1.0_build38"
@@ -925,7 +926,7 @@ shop_extra_magazine = 400
             # self.send_message(channel, f"[DEBUG] Early return: jammed=True")
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            await self.send_message(network, channel, self.pm(user, f"*CLACK*     Your gun is jammed, you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red', bold=True)}     {self.colorize('Your gun is jammed, you must reload to unjam it...', 'red')} | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
             return
         
         if channel_stats['ammo'] <= 0:
@@ -949,7 +950,7 @@ shop_extra_magazine = 400
                     await self.send_message(network, channel, self.pm(user, f"*CLICK*     Trigger locked. [{remaining_uses} remaining]"))
                     self.save_player_data()
                     return
-                # Otherwise apply classic-aligned penalties with liability reduction
+                # No duck present - apply wild fire penalties and confiscation
                 miss_pen = -random.randint(1, 5)  # Random penalty (-1 to -5) on miss
                 wild_pen = -2
                 if channel_stats.get('liability_insurance_until', 0) > now:
@@ -1018,7 +1019,7 @@ shop_extra_magazine = 400
                 channel_stats['jammed'] = True
                 clip_size = channel_stats.get('clip_size', 10)
                 mags_max = channel_stats.get('magazines_max', 2)
-                await self.send_message(network, channel, self.pm(user, f"*CLACK*     Your gun is jammed, you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red', bold=True)}     {self.colorize('Your gun is jammed, you must reload to unjam it...', 'red')} | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
                 self.save_player_data()
                 return
 
@@ -1111,6 +1112,8 @@ shop_extra_magazine = 400
             channel_stats['ducks_shot'] += 1
             channel_stats['last_duck_time'] = time.time()  # Record when duck was shot
             if duck_killed:
+                # Only record when duck is actually killed
+                self.channel_last_duck_time[norm_channel] = time.time()
                 # Base XP for kill (golden vs regular)
                 if target_duck['golden']:
                     channel_stats['golden_ducks'] += 1
@@ -1771,12 +1774,18 @@ shop_extra_magazine = 400
         player = self.get_player(user)
         channel_stats = self.get_channel_stats(user, channel)
         
-        if not channel_stats['last_duck_time']:
-            await self.send_message(network, channel, f"{user}: You haven't shot any ducks in {channel} yet.")
+        # Check if there's currently an active duck
+        norm_channel = self.normalize_channel(channel)
+        if norm_channel in self.active_ducks:
+            await self.send_message(network, channel, f"{user} > There is currently a duck in {channel}.")
+            return
+        
+        if norm_channel not in self.channel_last_duck_time:
+            await self.send_message(network, channel, f"{user} > No ducks have been killed in {channel} yet.")
             return
         
         current_time = time.time()
-        time_diff = current_time - channel_stats['last_duck_time']
+        time_diff = current_time - self.channel_last_duck_time[norm_channel]
         
         hours = int(time_diff // 3600)
         minutes = int((time_diff % 3600) // 60)
