@@ -50,7 +50,7 @@ class DuckHuntBot:
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
         # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
-        self.version = "1.0_build43"
+        self.version = "1.0_build44"
         self.ducks_lock = asyncio.Lock()
         # Next spawn pre-notice tracking
         self.next_spawn_channel = None
@@ -881,7 +881,6 @@ shop_extra_magazine = 400
         despawn_time = self.get_network_despawn_time(network) if network else self.despawn_time
         
         async with self.ducks_lock:
-            
             # Check each channel's single active duck
             for norm_channel, ducks in list(self.active_ducks.items()):
                 # Filter ducks that are still within lifespan
@@ -2010,7 +2009,8 @@ shop_extra_magazine = 400
             return
         
         # Handle MOTD end (376 message) - now we can complete registration
-        if "376" in data and "End of /MOTD command" in data:
+        if "376" in data and ("End of /MOTD command" in data or "End of message of the day" in data):
+            self.log_action(f"MOTD complete for {network.name}, completing registration")
             await self.complete_registration(network)
             return
         
