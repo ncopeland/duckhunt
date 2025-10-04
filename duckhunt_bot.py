@@ -50,7 +50,7 @@ class DuckHuntBot:
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
         # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
-        self.version = "1.0_build44"
+        self.version = "1.0_build45"
         self.ducks_lock = asyncio.Lock()
         # Next spawn pre-notice tracking
         self.next_spawn_channel = None
@@ -904,9 +904,6 @@ shop_extra_magazine = 400
                             await self.send_message(target_network, norm_channel, self.colorize("The duck flies away.     ·°'`'°-.,¸¸.·°'`", 'grey'))
                         # Quietly unconfiscate all on this channel when a duck despawns
                         self.unconfiscate_confiscated_in_channel(norm_channel)
-                        # Update last spawn time for this channel
-                        if target_network:
-                            target_network.channel_last_spawn[norm_channel] = current_time
                 if remaining_ducks:
                     self.active_ducks[norm_channel] = remaining_ducks
                 else:
