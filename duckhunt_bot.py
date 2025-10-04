@@ -1901,6 +1901,22 @@ shop_extra_magazine = 400
             # Schedule a duck spawn for the new channel
             await self.schedule_channel_next_duck(network, channel)
             await self.send_notice(network, user, f"Joined {channel} on {network.name}")
+        elif command == "part" and args:
+            channel = args[0]
+            # Part the channel on the network where the command was received
+            await self.send_network(network, f"PART {channel}")
+            # Remove the channel from our tracking
+            if channel in network.channels:
+                del network.channels[channel]
+            # Clear any scheduled spawns for this channel
+            if channel in network.channel_next_spawn:
+                del network.channel_next_spawn[channel]
+            if channel in network.channel_pre_notice:
+                del network.channel_pre_notice[channel]
+            if channel in network.channel_notice_sent:
+                del network.channel_notice_sent[channel]
+            self.log_action(f"Parted {channel} on {network.name} by {user}")
+            await self.send_notice(network, user, f"Parted {channel} on {network.name}")
         elif command == "clear" and args:
             channel = args[0]
             # Note: This is a global command, so we can't check a specific network
