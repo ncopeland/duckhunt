@@ -932,7 +932,8 @@ shop_extra_magazine = 400
                 if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
                     channel_stats['infrared_uses'] = max(0, channel_stats.get('infrared_uses', 0) - 1)
                     remaining_uses = channel_stats.get('infrared_uses', 0)
-                    await self.send_message(network, channel, self.pm(user, f"*CLICK*     Trigger locked. [{remaining_uses} remaining]"))
+                    remaining_color = 'red' if remaining_uses == 0 else 'green'
+                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLICK*', 'red', bold=True)} Trigger locked. {self.colorize(f'[{remaining_uses} remaining]', remaining_color)}"))
                     self.save_player_data()
                     return
                 # No duck present - apply wild fire penalties and confiscation
