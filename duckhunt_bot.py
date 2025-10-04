@@ -50,7 +50,7 @@ class DuckHuntBot:
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
         # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
-        self.version = "1.0_build41"
+        self.version = "1.0_build42"
         self.ducks_lock = asyncio.Lock()
         # Next spawn pre-notice tracking
         self.next_spawn_channel = None
@@ -1183,6 +1183,8 @@ shop_extra_magazine = 400
             await self.apply_weighted_loot(user, channel, channel_stats, network)
         
         self.save_player_data()
+        # Update last spawn time to current time (when duck was killed) before rescheduling
+        network.channel_last_spawn[channel] = time.time()
         # Only reschedule the current channel where the duck was killed
         await self.schedule_channel_next_duck(network, channel)
     
@@ -1280,6 +1282,8 @@ shop_extra_magazine = 400
             await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'green', bold=True)}     {self.colorize('You comfort the duck.', 'green')} Remaining friendliness needed: {remaining}."))
         
         self.save_player_data()
+        # Update last spawn time to current time (when duck was befriended) before rescheduling
+        network.channel_last_spawn[channel] = time.time()
         # Only reschedule the current channel where the duck was befriended
         await self.schedule_channel_next_duck(network, channel)
     
