@@ -1211,7 +1211,7 @@ shop_extra_magazine = 400
             if duck['golden'] and not duck.get('revealed', False):
                 duck['revealed'] = True
                 # Add golden duck message to the same line as the befriend message
-                bef_msg = f"{self.colorize('\\_0< QUAACK!', 'green')} {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize('(* GOLDEN DUCK DETECTED *)', 'yellow', bold=True)}"
+                bef_msg = f"{self.colorize('FRIEND', 'red', bold=True)} You comfort the duck! {self.colorize('[GOLDEN DUCK DETECTED]', 'yellow')} {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('friend', 'red')} {remaining}"
                 await self.send_message(network, channel, self.pm(user, bef_msg))
                 return
             
@@ -1248,7 +1248,7 @@ shop_extra_magazine = 400
             await self.check_level_change(user, channel, channel_stats, prev_xp, network)
         else:
             remaining = max(0, duck['health'])
-            response = f"{self.colorize('FRIEND', 'red', bold=True)} {self.colorize('You comfort the duck.', 'white')} {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')}{self.colorize('friend', 'red')} {remaining}]"
+            response = f"{self.colorize('FRIEND', 'red', bold=True)} You comfort the duck. {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')}{self.colorize('friend', 'red')} {remaining}]"
             await self.send_message(network, channel, self.pm(user, response))
         
         self.save_player_data()
