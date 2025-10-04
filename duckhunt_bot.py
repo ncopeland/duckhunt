@@ -1211,7 +1211,7 @@ shop_extra_magazine = 400
             if duck['golden'] and not duck.get('revealed', False):
                 duck['revealed'] = True
                 # Add golden duck message to the same line as the befriend message
-                bef_msg = f"{self.colorize('\\_0< QUAACK!', 'green')} {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize(f'[+{xp_gained} xp]', 'green')} {self.colorize('(* GOLDEN DUCK DETECTED *)', 'yellow', bold=True)}"
+                bef_msg = f"{self.colorize('\\_0< QUAACK!', 'green')} {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize('(* GOLDEN DUCK DETECTED *)', 'yellow', bold=True)}"
                 await self.send_message(network, channel, self.pm(user, bef_msg))
                 return
             
