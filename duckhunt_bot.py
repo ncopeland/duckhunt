@@ -47,7 +47,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build50"
+        self.version = "1.0_build51"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-network support
@@ -1140,11 +1140,11 @@ shop_extra_magazine = 400
             level_titles = ["tourist", "noob", "duck hater", "duck hunter", "member of the Comitee Against Ducks", 
                           "duck pest", "duck hassler", "duck killer", "duck demolisher", "duck disassembler"]
             title = level_titles[min(new_level-1, len(level_titles)-1)]
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. You are promoted to level {new_level} ({title}).     {self.colorize('\\_X<  *KWAK*', 'red')}  {self.colorize(f'[{xp_gain} xp]', 'green')}{item_display}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. You are promoted to level {new_level} ({title}). {self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{xp_gain} xp]', 'green')}{item_display}"))
         else:
             if duck_killed:
                 sign = '+' if xp_gain > 0 else ''
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}.     {self.colorize('\\_X<  *KWAK*', 'red')}  {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. {self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
             else:
                 remaining = max(0, target_duck['health'])
                 if target_duck['golden']:
