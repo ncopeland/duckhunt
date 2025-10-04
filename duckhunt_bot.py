@@ -1144,7 +1144,7 @@ shop_extra_magazine = 400
         else:
             if duck_killed:
                 sign = '+' if xp_gain > 0 else ''
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. {self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}.{self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
             else:
                 remaining = max(0, target_duck['health'])
                 if target_duck['golden']:
