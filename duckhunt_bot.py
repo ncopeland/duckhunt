@@ -1249,7 +1249,7 @@ shop_extra_magazine = 400
             await self.check_level_change(user, channel, channel_stats, prev_xp, network)
         else:
             remaining = max(0, duck['health'])
-            response = f"{self.colorize('FRIEND', 'red', bold=True)} You comfort the duck. {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')}{self.colorize('friend', 'red')} {remaining}]"
+            response = f"{self.colorize('FRIEND', 'red', bold=True)} You comfort the duck. {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('friend', 'red')} {remaining}]"
             await self.send_message(network, channel, self.pm(user, response))
         
         self.save_player_data()
