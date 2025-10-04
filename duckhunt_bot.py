@@ -45,17 +45,10 @@ class DuckHuntBot:
         self.config = self.load_config(config_file)
         self.players = self.load_player_data()
         self.authenticated_users = set()
-        self.channel_ducks = {}  # Per-channel duck lists: {channel: [{'spawn_time': time, 'golden': bool}]}
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
-        self.duck_spawn_time = None
-        self.version = "1.0_build48"
+        self.version = "1.0_build49"
         self.ducks_lock = asyncio.Lock()
-        # Next spawn pre-notice tracking
-        self.next_spawn_channel = None
-        self.pre_spawn_notice_time = None
-        self.next_spawn_notice_sent = False
         
         # Multi-network support
         self.networks = {}  # {network_name: NetworkConnection}
@@ -752,8 +745,6 @@ shop_extra_magazine = 400
             }
             # Append new duck (FIFO)
             self.active_ducks[norm_channel].append(duck)
-            # self.send_message(channel, f"[DEBUG] Duck added to active_ducks[{norm_channel}] - spawn_time: {duck['spawn_time']}")
-            self.log_action(f"[DEBUG] Duck added to active_ducks[{norm_channel}] - spawn_time: {duck['spawn_time']}")
         
         # Debug logging
         self.log_action(f"Spawned {'golden' if is_golden else 'regular'} duck in {channel} - spawn_time: {duck['spawn_time']}")
@@ -774,9 +765,7 @@ shop_extra_magazine = 400
         
         # Check active_ducks state after sending messages
         async with self.ducks_lock:
-            # self.send_message(channel, f"[DEBUG] Duck stored in {channel} - spawn_time: {duck['spawn_time']}")
             self.log_action(f"Duck spawned in {channel} on {network.name} - spawn_time: {duck['spawn_time']}")
-            self.log_action(f"[DEBUG] Active_ducks state after spawn: { {ch: len(lst) for ch,lst in self.active_ducks.items()} }")
         
         # Mark last spawn time for guarantees (only for automatic spawns)
         if schedule:
@@ -919,19 +908,16 @@ shop_extra_magazine = 400
         channel_stats = self.get_channel_stats(user, channel)
         
         if channel_stats['confiscated']:
-            # self.send_message(channel, f"[DEBUG] Early return: confiscated=True")
             await self.send_message(network, channel, self.pm(user, "You are not armed."))
             return
         
         if channel_stats['jammed']:
-            # self.send_message(channel, f"[DEBUG] Early return: jammed=True")
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
             await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red', bold=True)}     {self.colorize('Your gun is jammed, you must reload to unjam it...', 'red')} | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
             return
         
         if channel_stats['ammo'] <= 0:
-            # self.send_message(channel, f"[DEBUG] Early return: ammo={channel_stats['ammo']}")
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
             await self.send_message(network, channel, self.pm(user, f"*CLICK*     EMPTY MAGAZINE | Ammo: 0/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
@@ -940,8 +926,6 @@ shop_extra_magazine = 400
         # Check if there is a duck in this channel
         async with self.ducks_lock:
             norm_channel = self.normalize_channel(channel)
-            # self.send_message(channel, f"[DEBUG] Bang check - all channels: {list(self.active_ducks.keys())}")
-            # self.send_message(channel, f"[DEBUG] Bang check - channel in ducks: {norm_channel in self.active_ducks}")
             if norm_channel not in self.active_ducks:
                 # Infrared Detector: if active AND has uses, allow safe trigger lock and consume one use
                 now = time.time()
@@ -1189,8 +1173,6 @@ shop_extra_magazine = 400
         # Check if there is a duck in this channel
         async with self.ducks_lock:
             norm_channel = self.normalize_channel(channel)
-            # self.send_message(channel, f"[DEBUG] Bef check - all channels: {list(self.active_ducks.keys())}")
-            # self.send_message(channel, f"[DEBUG] Bef check - channel in ducks: {norm_channel in self.active_ducks}")
             if norm_channel not in self.active_ducks:
                 self.log_action(f"No ducks to befriend in {channel} - active_ducks keys: {list(self.active_ducks.keys())}")
                 # Apply random penalty (-1 to -10) for befriending when no ducks are present
