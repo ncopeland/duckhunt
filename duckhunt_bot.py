@@ -845,13 +845,17 @@ shop_extra_magazine = 400
             if pre is None:
                 continue
             if not network.channel_notice_sent.get(channel, False) and now >= pre:
+                self.log_action(f"Duck detector pre-notice triggered for {channel} on {network.name}")
                 # Notify each user in the channel with active detector
-                for user in list(network.channels.get(channel, [])):
+                users_in_channel = list(network.channels.get(channel, []))
+                self.log_action(f"Users in {channel}: {users_in_channel}")
+                for user in users_in_channel:
                     try:
                         stats = self.get_channel_stats(user, channel)
                     except Exception:
                         continue
                     until = stats.get('ducks_detector_until', 0)
+                    self.log_action(f"User {user} in {channel}: detector_until={until}, now={now}, active={until > now}")
                     if until and until > now:
                         # Compute seconds left to channel spawn
                         nxt = network.channel_next_spawn.get(channel)
@@ -860,6 +864,7 @@ shop_extra_magazine = 400
                         minutes = seconds_left // 60
                         secs = seconds_left % 60
                         msg = f"[Duck Detector] A duck will spawn in {minutes}m{secs:02d}s in {channel}."
+                        self.log_action(f"Sending duck detector notice to {user}: {msg}")
                         await self.send_notice(network, user, msg)
                 network.channel_notice_sent[channel] = True
     
