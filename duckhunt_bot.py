@@ -1194,7 +1194,7 @@ shop_extra_magazine = 400
                 penalty = -random.randint(1, 10)
                 channel_stats['misses'] += 1
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
-                await self.send_message(network, channel, self.pm(user, f"FRIEND     The duck seems distracted. Try again. [{penalty} XP]"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'red', bold=True)} The duck seems distracted. Try again. {self.colorize(f'[{penalty} XP]', 'red')}"))
                 self.save_player_data()
                 return
 
