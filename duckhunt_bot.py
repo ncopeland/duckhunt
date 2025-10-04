@@ -1140,11 +1140,11 @@ shop_extra_magazine = 400
             level_titles = ["tourist", "noob", "duck hater", "duck hunter", "member of the Comitee Against Ducks", 
                           "duck pest", "duck hassler", "duck killer", "duck demolisher", "duck disassembler"]
             title = level_titles[min(new_level-1, len(level_titles)-1)]
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. You are promoted to level {new_level} ({title}). {self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{xp_gain} xp]', 'green')}{item_display}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  You shot down the duck in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. You are promoted to level {new_level} ({title}). {self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{xp_gain} xp]', 'green')}{item_display}"))
         else:
             if duck_killed:
                 sign = '+' if xp_gain > 0 else ''
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. {self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  You shot down the duck in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. {self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
             else:
                 remaining = max(0, target_duck['health'])
                 if target_duck['golden']:
@@ -1401,7 +1401,7 @@ shop_extra_magazine = 400
                         if switched:
                             await self.send_message(network, channel, self.pm(user, f"You switched to explosive ammo. Next 20 shots are explosive. {self.colorize(f'[-{cost} XP]', 'red')}"))
                         else:
-                            await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased explosive ammo.', 'green')} Next 20 shots deal extra damage to golden ducks. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                            await self.send_message(network, channel, self.pm(user, f"You purchased explosive ammo. Next 20 shots deal extra damage to golden ducks. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 6:  # Grease: 24h reliability boost
                     now = time.time()
                     duration = 24 * 3600
