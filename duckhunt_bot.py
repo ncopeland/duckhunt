@@ -518,43 +518,64 @@ shop_extra_magazine = 400
             channel_key = channel  # Fallback for backward compatibility
             
         created_new = False
+        
+        # Check if new format key exists
         if channel_key not in player['channel_stats']:
-            player['channel_stats'][channel_key] = {
-                'xp': 0,
-                'ducks_shot': 0,
-                'golden_ducks': 0,
-                'misses': 0,
-                'accidents': 0,
-                'best_time': None,
-                'total_reaction_time': 0.0,
-                'shots_fired': 0,
-                'last_duck_time': None,
-                'wild_fires': 0,
-                'confiscated': False,
-                'jammed': False,
-                'sabotaged': False,
-                'ammo': 0,
-                'magazines': 0,
-                'ap_shots': 0,
-                'explosive_shots': 0,
-                'bread_uses': 0,
-                'befriended_ducks': 0,
-                'infrared_until': 0,
-                'infrared_uses': 0,
-                'grease_until': 0,
-                'silencer_until': 0,
-                'sunglasses_until': 0,
-                'ducks_detector_until': 0,
-                'mirror_until': 0,
-                'sand_until': 0,
-                'soaked_until': 0,
-                'life_insurance_until': 0,
-                'liability_insurance_until': 0,
-                'brush_until': 0,
-                'clover_until': 0,
-                'clover_bonus': 0,
-                'sight_next_shot': False
-            }
+            # Check for old format keys and migrate data if found
+            norm_channel = self.normalize_channel(channel)
+            old_key = None
+            
+            # Look for old format key (exact match first, then normalized match)
+            for key in list(player['channel_stats'].keys()):
+                if key == channel or self.normalize_channel(key) == norm_channel:
+                    old_key = key
+                    break
+            
+            if old_key:
+                # Migrate old data to new format
+                old_data = player['channel_stats'][old_key]
+                player['channel_stats'][channel_key] = old_data.copy()
+                # Remove old key
+                del player['channel_stats'][old_key]
+                self.log_action(f"Migrated player data for {user}: {old_key} -> {channel_key}")
+            else:
+                # Create new empty stats if no old data found
+                player['channel_stats'][channel_key] = {
+                    'xp': 0,
+                    'ducks_shot': 0,
+                    'golden_ducks': 0,
+                    'misses': 0,
+                    'accidents': 0,
+                    'best_time': None,
+                    'total_reaction_time': 0.0,
+                    'shots_fired': 0,
+                    'last_duck_time': None,
+                    'wild_fires': 0,
+                    'confiscated': False,
+                    'jammed': False,
+                    'sabotaged': False,
+                    'ammo': 0,
+                    'magazines': 0,
+                    'ap_shots': 0,
+                    'explosive_shots': 0,
+                    'bread_uses': 0,
+                    'befriended_ducks': 0,
+                    'infrared_until': 0,
+                    'infrared_uses': 0,
+                    'grease_until': 0,
+                    'silencer_until': 0,
+                    'sunglasses_until': 0,
+                    'ducks_detector_until': 0,
+                    'mirror_until': 0,
+                    'sand_until': 0,
+                    'soaked_until': 0,
+                    'life_insurance_until': 0,
+                    'liability_insurance_until': 0,
+                    'brush_until': 0,
+                    'clover_until': 0,
+                    'clover_bonus': 0,
+                    'sight_next_shot': False
+                }
             created_new = True
         # Backfill newly introduced fields for existing channel stats
         stats = player['channel_stats'][channel_key]
