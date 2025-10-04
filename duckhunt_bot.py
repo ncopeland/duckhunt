@@ -1422,8 +1422,13 @@ shop_extra_magazine = 400
                         channel_stats['sight_next_shot'] = True
                         await self.send_message(network, channel, self.pm(user, f"You purchased a sight. Your next shot will be more accurate. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 11:  # Sunglasses: 24h protection against mirror / reduce accident penalty
-                    channel_stats['sunglasses_until'] = max(channel_stats.get('sunglasses_until', 0), time.time() + 24*3600)
-                    await self.send_message(network, channel, self.pm(user, f"You put on sunglasses for 24h. You're protected against mirror glare. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                    now = time.time()
+                    if channel_stats.get('sunglasses_until', 0) > now:
+                        await self.send_notice(network, user, "Sunglasses already active. Wait until they wear off to buy more.")
+                        channel_stats['xp'] += item['cost']
+                    else:
+                        channel_stats['sunglasses_until'] = now + 24*3600
+                        await self.send_message(network, channel, self.pm(user, f"You put on sunglasses for 24h. You're protected against mirror glare. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 12:  # Spare clothes: clear soaked if present
                     if channel_stats.get('soaked_until', 0) > time.time():
                         channel_stats['soaked_until'] = 0
