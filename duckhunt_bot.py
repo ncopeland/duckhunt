@@ -692,7 +692,7 @@ shop_extra_magazine = 400
         if new_level > prev_level:
             await self.send_message(network, channel, self.pm(user, f"{self.colorize('PROMOTION', 'green', bold=True)} You are promoted to level {new_level} ({title}) in {channel}."))
         else:
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('DEMOTION', 'red', bold=True)}     {self.colorize(f'You are demoted to level {new_level} ({title}) in {channel}.', 'red')}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('DEMOTION', 'red', bold=True)} You are demoted to level {new_level} ({title}) in {channel}."))
         stats['level'] = new_level
 
     def apply_level_bonuses(self, channel_stats):
