@@ -50,7 +50,7 @@ class DuckHuntBot:
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
         # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
-        self.version = "1.0_build46"
+        self.version = "1.0_build47"
         self.ducks_lock = asyncio.Lock()
         # Next spawn pre-notice tracking
         self.next_spawn_channel = None
@@ -1964,17 +1964,8 @@ shop_extra_magazine = 400
                     break
             next_time = network.channel_next_spawn.get(key) if key else None
             if not next_time:
-                # No schedule exists yet - create one but don't show it as immediate
-                await self.schedule_channel_next_duck(network, channel, allow_immediate=False)
-                # Get the newly created schedule
-                for k in list(network.channel_next_spawn.keys()):
-                    if self.normalize_channel(k) == norm:
-                        key = k
-                        break
-                next_time = network.channel_next_spawn.get(key) if key else None
-                if not next_time:
-                    await self.send_message(network, channel, f"{user} > No spawn scheduled yet for {channel}.")
-                    return
+                await self.send_message(network, channel, f"{user} > No spawn scheduled yet for {channel}.")
+                return
             remaining = max(0, int(next_time - now))
             minutes = remaining // 60
             seconds = remaining % 60
@@ -2049,12 +2040,6 @@ shop_extra_magazine = 400
                 if channel in network.channels:
                     network.channels[channel].add(user)
                 self.log_message("JOIN", f"{user} joined {channel}")
-                # If we (the bot) joined, ensure a schedule is created
-                try:
-                    if user == network.nick:
-                        await self.schedule_channel_next_duck(network, channel)
-                except Exception as e:
-                    self.log_action(f"Failed to schedule on self JOIN for {channel}: {e}")
         
         elif "PART" in data:
             # User left channel
@@ -2092,11 +2077,8 @@ shop_extra_magazine = 400
         try:
             if command == 'nextduck':
                 pass  # don't create schedule here; handled below without immediate spawn
-            else:
-                if not network.channel_next_spawn.get(channel):
-                    await self.schedule_channel_next_duck(network, channel)
         except Exception as e:
-            self.log_action(f"Lazy schedule init failed for {channel}: {e}")
+            self.log_action(f"Error processing channel message: {e}")
 
         args = command_parts[1:] if len(command_parts) > 1 else []
         
@@ -2136,17 +2118,8 @@ shop_extra_magazine = 400
                     break
             next_time = network.channel_next_spawn.get(key) if key else None
             if not next_time:
-                # Only schedule if no schedule exists at all
-                await self.schedule_channel_next_duck(network, channel, allow_immediate=False)
-                # Get the newly created schedule using the same key lookup
-                for k in list(network.channel_next_spawn.keys()):
-                    if self.normalize_channel(k) == norm:
-                        key = k
-                        break
-                next_time = network.channel_next_spawn.get(key) if key else None
-                if not next_time:
-                    await self.send_message(network, channel, f"{user} > No spawn scheduled yet for {channel}.")
-                    return
+                await self.send_message(network, channel, f"{user} > No spawn scheduled yet for {channel}.")
+                return
             remaining = max(0, int(next_time - now))
             minutes = remaining // 60
             seconds = remaining % 60
