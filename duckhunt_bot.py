@@ -1081,7 +1081,8 @@ shop_extra_magazine = 400
             if target_duck['golden'] and not target_duck.get('revealed', False):
                 target_duck['revealed'] = True
                 # Add golden duck message to the same line as the hit message
-                hit_msg = f"{self.colorize('*BANG*', 'red', bold=True)} You hit the duck! {self.colorize('[GOLDEN DUCK DETECTED]', 'yellow', bold=True)}"
+                remaining = max(0, target_duck['health'])
+                hit_msg = f"{self.colorize('*BANG*', 'red', bold=True)} You hit the duck! {self.colorize('[GOLDEN DUCK DETECTED]', 'yellow', bold=True)} {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"
                 await self.send_message(network, channel, self.pm(user, hit_msg))
                 return
             
