@@ -1413,7 +1413,7 @@ shop_extra_magazine = 400
                         channel_stats['xp'] += item['cost']
                     else:
                         channel_stats['grease_until'] = now + duration
-                        await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased grease.', 'green')} Your gun will jam half as often for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                        await self.send_message(network, channel, self.pm(user, f"You purchased grease. Your gun will jam half as often for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 7:  # Sight: next shot accuracy boost; cannot stack
                     if channel_stats.get('sight_next_shot', False):
                         await self.send_notice(network, user, "Sight already mounted for your next shot. Use it before buying more.")
