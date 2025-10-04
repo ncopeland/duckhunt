@@ -50,7 +50,7 @@ class DuckHuntBot:
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
         # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
-        self.version = "1.0_build39"
+        self.version = "1.0_build40"
         self.ducks_lock = asyncio.Lock()
         # Next spawn pre-notice tracking
         self.next_spawn_channel = None
@@ -2392,9 +2392,9 @@ shop_extra_magazine = 400
                             if not await self.can_spawn_duck(ch, network):
                                 network.channel_next_spawn[ch] = now + random.randint(5, 15)
                                 continue
-                            await self.spawn_duck(network, ch)
-                            # Clear consumed schedule entry to avoid double triggers
+                            # Clear schedule BEFORE spawning to prevent race conditions
                             network.channel_next_spawn[ch] = None
+                            await self.spawn_duck(network, ch)
                 
                 # Duck despawn is handled in the exception handler with proper throttling
                 
@@ -2419,8 +2419,9 @@ shop_extra_magazine = 400
                                 if not await self.can_spawn_duck(ch, network):
                                     network.channel_next_spawn[ch] = now + random.randint(5, 15)
                                     continue
-                                await self.spawn_duck(network, ch)
+                                # Clear schedule BEFORE spawning to prevent race conditions
                                 network.channel_next_spawn[ch] = None
+                                await self.spawn_duck(network, ch)
                     
                     # Check for duck despawn (only after registration, throttled to once per second)
                     if hasattr(network, 'registration_complete'):
