@@ -47,7 +47,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build49"
+        self.version = "1.0_build50"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-network support
@@ -920,7 +920,7 @@ shop_extra_magazine = 400
         if channel_stats['ammo'] <= 0:
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            await self.send_message(network, channel, self.pm(user, f"*CLICK*     EMPTY MAGAZINE | Ammo: 0/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLICK*', 'red')} EMPTY MAGAZINE | Ammo: 0/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
             return
         
         # Check if there is a duck in this channel
@@ -1027,7 +1027,7 @@ shop_extra_magazine = 400
                 penalty = -random.randint(1, 5)
                 prev_xp = channel_stats['xp']
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You missed.', 'red')} {self.colorize(f'[{penalty} xp]', 'red')}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} You missed. {self.colorize(f'[{penalty} xp]', 'red')}"))
                 # Ricochet accident: 20% chance to hit a random player
                 victim = None
                 if channel in network.channels and network.channels[channel]:
@@ -1081,7 +1081,7 @@ shop_extra_magazine = 400
             if target_duck['golden'] and not target_duck.get('revealed', False):
                 target_duck['revealed'] = True
                 # Add golden duck message to the same line as the hit message
-                hit_msg = f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You hit the duck!', 'orange')} {self.colorize('(* GOLDEN DUCK DETECTED *)', 'yellow', bold=True)}"
+                hit_msg = f"{self.colorize('*BANG*', 'red', bold=True)} You hit the duck! {self.colorize('[GOLDEN DUCK DETECTED]', 'yellow', bold=True)}"
                 await self.send_message(network, channel, self.pm(user, hit_msg))
                 return
             
@@ -1140,17 +1140,15 @@ shop_extra_magazine = 400
             level_titles = ["tourist", "noob", "duck hater", "duck hunter", "member of the Comitee Against Ducks", 
                           "duck pest", "duck hassler", "duck killer", "duck demolisher", "duck disassembler"]
             title = level_titles[min(new_level-1, len(level_titles)-1)]
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. You are promoted to level {new_level} ({title}).     {self.colorize('\\_X<   *KWAK*', 'red')}   {self.colorize(f'[{xp_gain} xp]', 'green')}{item_display}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. You are promoted to level {new_level} ({title}).     {self.colorize('\\_X<  *KWAK*', 'red')}  {self.colorize(f'[{xp_gain} xp]', 'green')}{item_display}"))
         else:
             if duck_killed:
                 sign = '+' if xp_gain > 0 else ''
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}.     {self.colorize('\\_X<   *KWAK*', 'red')}   {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}.     {self.colorize('\\_X<  *KWAK*', 'red')}  {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
             else:
                 remaining = max(0, target_duck['health'])
                 if target_duck['golden']:
-                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('The golden duck survived ! Try again.', 'yellow', bold=True)}   {self.colorize('\\_O<', 'yellow')}  {self.colorize(f'[life -{damage}]', 'red')}"))
-                else:
-                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}     {self.colorize('You hit the duck!', 'orange')} Remaining health: {remaining}."))
+                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize(f'[{self.colorize("\\_O<", "yellow")}life -{damage}]', 'red')}"))
         # Announce promotion/demotion if level changed (any XP change path)
         if xp_gain != 0:
             await self.check_level_change(user, channel, channel_stats, prev_xp, network)
@@ -1279,17 +1277,17 @@ shop_extra_magazine = 400
             await self.send_message(network, channel, self.pm(user, f"*Crr..CLICK*     You fix the sabotage. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         elif channel_stats['ammo'] == 0:
             if channel_stats['magazines'] <= 0:
-                await self.send_message(network, channel, self.pm(user, "You have no magazines left to reload with."))
+                await self.send_message(network, channel, self.pm(user, "You have no filled magazines to reload your weapon."))
             else:
                 clip_size = channel_stats.get('clip_size', 10)
                 channel_stats['ammo'] = clip_size
                 channel_stats['magazines'] -= 1
                 mags_max = channel_stats.get('magazines_max', 2)
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK CLACK*', 'blue', bold=True)}     {self.colorize('You reload.', 'blue')} | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK CLACK*', 'red', bold=True)} You reload. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         else:
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('Your gun doesn\'t need to be reloaded.', 'grey')} | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"Your gun doesn't need to be reloaded. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         
         self.save_player_data()
     
@@ -1364,7 +1362,7 @@ shop_extra_magazine = 400
                     clip_size = channel_stats.get('clip_size', 10)
                     if channel_stats['ammo'] < clip_size:
                         channel_stats['ammo'] = min(clip_size, channel_stats['ammo'] + 1)
-                        await self.send_message(network, channel, self.pm(user, f"You just added an extra bullet. [-{cost} XP] | Ammo: {channel_stats['ammo']}/{clip_size}"))
+                        await self.send_message(network, channel, self.pm(user, f"You just added an extra bullet. {self.colorize(f'[-{cost} XP]', 'red')} | Ammo: {channel_stats['ammo']}/{clip_size}"))
                     else:
                         await self.send_message(network, channel, self.pm(user, f"Your magazine is already full."))
                         channel_stats['xp'] += item['cost']  # Refund XP
@@ -1372,7 +1370,7 @@ shop_extra_magazine = 400
                     mags_max = channel_stats.get('magazines_max', 2)
                     if channel_stats['magazines'] < mags_max:
                         channel_stats['magazines'] = min(mags_max, channel_stats['magazines'] + 1)
-                        await self.send_message(network, channel, self.pm(user, f"You just added an extra magazine. [-{cost} XP] | Magazines: {channel_stats['magazines']}/{mags_max}"))
+                        await self.send_message(network, channel, self.pm(user, f"You just added an extra magazine. {self.colorize(f'[-{cost} XP]', 'red')} | Magazines: {channel_stats['magazines']}/{mags_max}"))
                     else:
                         await self.send_message(network, channel, self.pm(user, f"You already have the maximum magazines."))
                         channel_stats['xp'] += item['cost']  # Refund XP
@@ -1387,7 +1385,7 @@ shop_extra_magazine = 400
                         channel_stats['explosive_shots'] = 0
                         channel_stats['ap_shots'] = 20
                         if switched:
-                            await self.send_message(network, channel, self.pm(user, f"You switched to AP ammo. Next 20 shots are AP. [-{cost} XP]"))
+                            await self.send_message(network, channel, self.pm(user, f"You switched to AP ammo. Next 20 shots are AP. {self.colorize(f'[-{cost} XP]', 'red')}"))
                         else:
                             await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased AP ammo.', 'green')} Next 20 shots deal extra damage to golden ducks. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 4:  # Explosive ammo: next 20 shots do +1 dmg vs golden and boost accuracy
@@ -1401,7 +1399,7 @@ shop_extra_magazine = 400
                         channel_stats['ap_shots'] = 0
                         channel_stats['explosive_shots'] = 20
                         if switched:
-                            await self.send_message(network, channel, self.pm(user, f"You switched to explosive ammo. Next 20 shots are explosive. [-{cost} XP]"))
+                            await self.send_message(network, channel, self.pm(user, f"You switched to explosive ammo. Next 20 shots are explosive. {self.colorize(f'[-{cost} XP]', 'red')}"))
                         else:
                             await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased explosive ammo.', 'green')} Next 20 shots deal extra damage to golden ducks. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 6:  # Grease: 24h reliability boost
@@ -1422,11 +1420,11 @@ shop_extra_magazine = 400
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased a sight.', 'green')} Your next shot will be more accurate. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 11:  # Sunglasses: 24h protection against mirror / reduce accident penalty
                     channel_stats['sunglasses_until'] = max(channel_stats.get('sunglasses_until', 0), time.time() + 24*3600)
-                    await self.send_message(network, channel, self.pm(user, f"You put on sunglasses for 24h. You're protected against mirror glare. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"You put on sunglasses for 24h. You're protected against mirror glare. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 12:  # Spare clothes: clear soaked if present
                     if channel_stats.get('soaked_until', 0) > time.time():
                         channel_stats['soaked_until'] = 0
-                        await self.send_message(network, channel, self.pm(user, f"You change into spare clothes. You're no longer soaked. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"You change into spare clothes. You're no longer soaked. {self.colorize(f'[-{cost} XP]', 'red')}"))
                     else:
                         await self.send_notice(network, user, "You're not soaked. Refunding XP.")
                         channel_stats['xp'] += item['cost']
@@ -1436,7 +1434,7 @@ shop_extra_magazine = 400
                     if channel_stats.get('sand_until', 0) > time.time():
                         channel_stats['sand_until'] = 0
                     channel_stats['brush_until'] = max(channel_stats.get('brush_until', 0), time.time() + 24*3600)
-                    await self.send_message(network, channel, self.pm(user, f"You clean your gun and remove sand. It feels smoother for 24h. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"You clean your gun and remove sand. It feels smoother for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 14:  # Mirror: apply dazzle debuff to target unless countered by sunglasses (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 14 <nick>")
@@ -1450,7 +1448,7 @@ shop_extra_magazine = 400
                             channel_stats['xp'] += item['cost']
                         else:
                             tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
-                            await self.send_message(network, channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced. [-{cost} XP]"))
+                            await self.send_message(network, channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 15:  # Handful of sand: victim reliability worse for 1h (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 15 <nick>")
@@ -1459,7 +1457,7 @@ shop_extra_magazine = 400
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel)
                         tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 3600)
-                        await self.send_message(network, channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 16:  # Water bucket: soak target for 1h (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 16 <nick>")
@@ -1468,7 +1466,7 @@ shop_extra_magazine = 400
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel)
                         tstats['soaked_until'] = max(tstats.get('soaked_until', 0), time.time() + 3600)
-                        await self.send_message(network, channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 17:  # Sabotage: jam target immediately (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 17 <nick>")
@@ -1477,13 +1475,13 @@ shop_extra_magazine = 400
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel)
                         tstats['jammed'] = True
-                        await self.send_message(network, channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 18:  # Life insurance: protect against confiscation for 24h
                     channel_stats['life_insurance_until'] = max(channel_stats.get('life_insurance_until', 0), time.time() + 24*3600)
-                    await self.send_message(network, channel, self.pm(user, f"You purchase life insurance. Confiscations will be prevented for 24h. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"You purchase life insurance. Confiscations will be prevented for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 19:  # Liability insurance: reduce penalties by 50% for 24h
                     channel_stats['liability_insurance_until'] = max(channel_stats.get('liability_insurance_until', 0), time.time() + 24*3600)
-                    await self.send_message(network, channel, self.pm(user, f"You purchase liability insurance. Penalties reduced by 50% for 24h. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"You purchase liability insurance. Penalties reduced by 50% for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 22:  # Upgrade Magazine: increase clip size (level 1-5), dynamic cost per level
                     current_level = channel_stats.get('mag_upgrade_level', 0)
                     if current_level >= 5:
@@ -1496,7 +1494,7 @@ shop_extra_magazine = 400
                         self.apply_level_bonuses(channel_stats)
                         # Top off ammo by 1 up to new clip size
                         channel_stats['ammo'] = min(channel_stats['clip_size'], channel_stats['ammo'] + 1)
-                        await self.send_message(network, channel, self.pm(user, f"Upgrade applied. Magazine capacity increased to {channel_stats['clip_size']}. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"Upgrade applied. Magazine capacity increased to {channel_stats['clip_size']}. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 10:  # Four-leaf clover: +N XP per duck for 24h; single active at a time
                     now = time.time()
                     duration = 24 * 3600
@@ -1508,7 +1506,7 @@ shop_extra_magazine = 400
                         bonus = random.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
                         channel_stats['clover_bonus'] = bonus
                         channel_stats['clover_until'] = now + duration
-                        await self.send_message(network, channel, self.pm(user, f"Four-leaf clover activated for 24h. +{bonus} XP per duck. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"Four-leaf clover activated for 24h. +{bonus} XP per duck. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 8:  # Infrared detector: 24h trigger lock window when no duck, limited uses
                     now = time.time()
                     duration = 24 * 3600
@@ -1521,7 +1519,7 @@ shop_extra_magazine = 400
                         channel_stats['infrared_until'] = new_until
                         channel_stats['infrared_uses'] = 6
                         hours = duration // 3600
-                        await self.send_message(network, channel, self.pm(user, f"Infrared detector enabled for {hours}h00m. Trigger lock has 6 uses. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"Infrared detector enabled for {hours}h00m. Trigger lock has 6 uses. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 9:  # Silencer: 24h protection against scaring ducks
                     now = time.time()
                     duration = 24 * 3600
@@ -1545,7 +1543,7 @@ shop_extra_magazine = 400
                         mags_max = channel_stats.get('magazines_max', 2)
                         channel_stats['ammo'] = clip_size
                         channel_stats['magazines'] = mags_max
-                        await self.send_message(network, channel, self.pm(user, f"You repurchased your confiscated gun. [-{cost} XP] | Ammo: {clip_size}/{clip_size} | Magazines: {mags_max}/{mags_max}"))
+                        await self.send_message(network, channel, self.pm(user, f"You repurchased your confiscated gun. {self.colorize(f'[-{cost} XP]', 'red')} | Ammo: {clip_size}/{clip_size} | Magazines: {mags_max}/{mags_max}"))
                     else:
                         await self.send_message(network, channel, f"Your gun is not confiscated.")
                         channel_stats['xp'] += item['cost']  # Refund XP
@@ -1554,7 +1552,7 @@ shop_extra_magazine = 400
                     duration = 24 * 3600
                     current_until = channel_stats.get('ducks_detector_until', 0)
                     channel_stats['ducks_detector_until'] = max(current_until, now + duration)
-                    await self.send_message(network, channel, self.pm(user, f"Ducks detector activated for 24h. You'll get a 60s pre-spawn notice. [-{cost} XP]"))
+                    await self.send_message(network, channel, self.pm(user, f"Ducks detector activated for 24h. You'll get a 60s pre-spawn notice. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 23:  # Extra Magazine: increase magazines_max (level 1-5), cost scales
                     current_level = channel_stats.get('mag_capacity_level', 0)
                     if current_level >= 5:
@@ -1565,7 +1563,7 @@ shop_extra_magazine = 400
                         channel_stats['magazines_max'] = channel_stats.get('magazines_max', 2) + 1
                         # Grant one extra empty magazine immediately
                         channel_stats['magazines'] = min(channel_stats['magazines_max'], channel_stats['magazines'] + 1)
-                        await self.send_message(network, channel, self.pm(user, f"Upgrade applied. You can now carry {channel_stats['magazines_max']} magazines. [-{cost} XP]"))
+                        await self.send_message(network, channel, self.pm(user, f"Upgrade applied. You can now carry {channel_stats['magazines_max']} magazines. {self.colorize(f'[-{cost} XP]', 'red')}"))
                         item['cost'] = min(1000, item['cost'] + 200)
                 else:
                     # For other items, just show generic message
