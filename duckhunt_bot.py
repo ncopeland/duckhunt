@@ -1176,7 +1176,7 @@ shop_extra_magazine = 400
                 # Apply random penalty (-1 to -10) for befriending when no ducks are present
                 penalty = -random.randint(1, 10)
                 channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('There are no ducks to befriend.', 'red')} {self.colorize(f'[{penalty} XP]', 'red')}"))
+                await self.send_message(network, channel, self.pm(user, f"There are no ducks to befriend. {self.colorize(f'[{penalty} XP]', 'red')}"))
                 self.save_player_data()
                 return
             
@@ -1237,18 +1237,19 @@ shop_extra_magazine = 400
             prev_xp = channel_stats['xp']
             channel_stats['xp'] += xp_gained
             channel_stats['befriended_ducks'] += 1
-            response = f"FRIEND     The "
+            response = f"{self.colorize('FRIEND', 'red', bold=True)} "
             if duck['golden']:
-                response += "GOLDEN DUCK"
+                response += "The GOLDEN DUCK"
             else:
-                response += "DUCK"
-            response += f" was befriended!   {self.colorize('\\_0< QUAACK!', 'green')}   {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize(f'[+{xp_gained} xp]', 'green')}"
+                response += "The DUCK"
+            response += f" was befriended! {self.colorize('\\_0<', 'yellow')} {self.colorize('*QUAACK!*', 'red')} {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize(f'[+{xp_gained} xp]', 'green')}"
             await self.send_message(network, channel, self.pm(user, response))
             self.log_action(f"{user} befriended a {'golden ' if duck['golden'] else ''}duck in {channel}")
             await self.check_level_change(user, channel, channel_stats, prev_xp, network)
         else:
             remaining = max(0, duck['health'])
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'green', bold=True)}     {self.colorize('You comfort the duck.', 'green')} Remaining friendliness needed: {remaining}."))
+            response = f"{self.colorize('FRIEND', 'red', bold=True)} {self.colorize('You comfort the duck.', 'white')} {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')}{self.colorize('friend', 'red')} {remaining}]"
+            await self.send_message(network, channel, self.pm(user, response))
         
         self.save_player_data()
     
