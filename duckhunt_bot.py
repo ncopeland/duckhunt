@@ -1269,7 +1269,7 @@ shop_extra_magazine = 400
             channel_stats['jammed'] = False
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            await self.send_message(network, channel, self.pm(user, f"*Crr..CLICK*     You unjam your gun. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*Crr..CLICK*', 'red')} You unjam your gun. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         elif channel_stats['sabotaged']:
             channel_stats['sabotaged'] = False
             clip_size = channel_stats.get('clip_size', 10)
