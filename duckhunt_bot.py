@@ -914,7 +914,7 @@ shop_extra_magazine = 400
         if channel_stats['jammed']:
             clip_size = channel_stats.get('clip_size', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red', bold=True)}     {self.colorize('Your gun is jammed, you must reload to unjam it...', 'red')} | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red')} Your gun is {self.colorize('JAMMED', 'red', bold=True)} you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
             return
         
         if channel_stats['ammo'] <= 0:
@@ -1004,7 +1004,7 @@ shop_extra_magazine = 400
                 channel_stats['jammed'] = True
                 clip_size = channel_stats.get('clip_size', 10)
                 mags_max = channel_stats.get('magazines_max', 2)
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red', bold=True)}     {self.colorize('Your gun is jammed, you must reload to unjam it...', 'red')} | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red')} Your gun is {self.colorize('JAMMED', 'red', bold=True)} you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
                 self.save_player_data()
                 return
 
