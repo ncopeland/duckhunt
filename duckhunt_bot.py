@@ -482,6 +482,16 @@ shop_extra_magazine = 400
         """Normalize channel name for internal dictionaries (strip + lower)."""
         return channel.strip().lower()
     
+    def get_network_channel_key(self, network: NetworkConnection, channel: str) -> str:
+        """Get network-prefixed channel key for global data structures."""
+        norm_channel = self.normalize_channel(channel)
+        return f"{network.name}:{norm_channel}"
+    
+    def get_network_channel_key_from_name(self, network_name: str, channel: str) -> str:
+        """Get network-prefixed channel key from network name."""
+        norm_channel = self.normalize_channel(channel)
+        return f"{network_name}:{norm_channel}"
+    
     def get_player(self, user):
         """Get or create player data"""
         if user not in self.players:
@@ -497,12 +507,19 @@ shop_extra_magazine = 400
             }
         return self.players[user]
     
-    def get_channel_stats(self, user, channel):
+    def get_channel_stats(self, user, channel, network: NetworkConnection = None):
         """Get or create channel-specific stats for a player"""
         player = self.get_player(user)
+        
+        # Use network-prefixed key if network is provided
+        if network:
+            channel_key = self.get_network_channel_key(network, channel)
+        else:
+            channel_key = channel  # Fallback for backward compatibility
+            
         created_new = False
-        if channel not in player['channel_stats']:
-            player['channel_stats'][channel] = {
+        if channel_key not in player['channel_stats']:
+            player['channel_stats'][channel_key] = {
                 'xp': 0,
                 'ducks_shot': 0,
                 'golden_ducks': 0,
@@ -540,7 +557,7 @@ shop_extra_magazine = 400
             }
             created_new = True
         # Backfill newly introduced fields for existing channel stats
-        stats = player['channel_stats'][channel]
+        stats = player['channel_stats'][channel_key]
         if 'ap_shots' not in stats:
             stats['ap_shots'] = 0
         if 'explosive_shots' not in stats:
@@ -709,14 +726,22 @@ shop_extra_magazine = 400
         channel_stats['wild_penalty'] = props['wild_penalty']
         channel_stats['accident_penalty'] = props['accident_penalty']
 
-    def unconfiscate_confiscated_in_channel(self, channel: str) -> None:
+    def unconfiscate_confiscated_in_channel(self, channel: str, network: NetworkConnection = None) -> None:
         """Quietly return confiscated guns to all players on a channel."""
-        target_norm = self.normalize_channel(channel)
-        for _player_name, player_data in self.players.items():
-            channel_stats_map = player_data.get('channel_stats', {})
-            for ch_key, stats in channel_stats_map.items():
-                if self.normalize_channel(ch_key) == target_norm and stats.get('confiscated'):
-                    stats['confiscated'] = False
+        if network:
+            target_key = self.get_network_channel_key(network, channel)
+            for _player_name, player_data in self.players.items():
+                channel_stats_map = player_data.get('channel_stats', {})
+                if target_key in channel_stats_map and channel_stats_map[target_key].get('confiscated'):
+                    channel_stats_map[target_key]['confiscated'] = False
+        else:
+            # Fallback for backward compatibility
+            target_norm = self.normalize_channel(channel)
+            for _player_name, player_data in self.players.items():
+                channel_stats_map = player_data.get('channel_stats', {})
+                for ch_key, stats in channel_stats_map.items():
+                    if self.normalize_channel(ch_key) == target_norm and stats.get('confiscated'):
+                        stats['confiscated'] = False
     
     async def spawn_duck(self, network: NetworkConnection, channel=None, schedule: bool = True):
         """Spawn a new duck in a specific channel. If schedule is False, do not reset the auto timer."""
@@ -728,12 +753,12 @@ shop_extra_magazine = 400
             channel = random.choice(channels)
         
         async with self.ducks_lock:
-            norm_channel = self.normalize_channel(channel)
-            if norm_channel not in self.active_ducks:
-                self.active_ducks[norm_channel] = []
+            channel_key = self.get_network_channel_key(network, channel)
+            if channel_key not in self.active_ducks:
+                self.active_ducks[channel_key] = []
             # Enforce max_ducks from network config
             max_ducks = self.get_network_max_ducks(network)
-            if len(self.active_ducks[norm_channel]) >= max_ducks:
+            if len(self.active_ducks[channel_key]) >= max_ducks:
                 return
             gold_ratio = self.get_network_gold_ratio(network)
             is_golden = random.random() < gold_ratio
@@ -744,7 +769,7 @@ shop_extra_magazine = 400
                 'revealed': False
             }
             # Append new duck (FIFO)
-            self.active_ducks[norm_channel].append(duck)
+            self.active_ducks[channel_key].append(duck)
         
         # Debug logging
         self.log_action(f"Spawned {'golden' if is_golden else 'regular'} duck in {channel} - spawn_time: {duck['spawn_time']}")
@@ -831,10 +856,13 @@ shop_extra_magazine = 400
 
     async def can_spawn_duck(self, channel: str, network: NetworkConnection = None) -> bool:
         """Return True if the channel is below max active ducks and can accept a new duck."""
-        norm_channel = self.normalize_channel(channel)
+        if network:
+            channel_key = self.get_network_channel_key(network, channel)
+        else:
+            channel_key = self.normalize_channel(channel)  # Fallback for backward compatibility
         max_ducks = self.get_network_max_ducks(network) if network else self.max_ducks
         async with self.ducks_lock:
-            current_count = len(self.active_ducks.get(norm_channel, []))
+            current_count = len(self.active_ducks.get(channel_key, []))
             return current_count < max_ducks
 
     async def notify_duck_detector(self, network: NetworkConnection):
@@ -851,7 +879,7 @@ shop_extra_magazine = 400
                 self.log_action(f"Users in {channel}: {users_in_channel}")
                 for user in users_in_channel:
                     try:
-                        stats = self.get_channel_stats(user, channel)
+                        stats = self.get_channel_stats(user, channel, network)
                     except Exception:
                         continue
                     until = stats.get('ducks_detector_until', 0)
@@ -875,8 +903,8 @@ shop_extra_magazine = 400
         despawn_time = self.get_network_despawn_time(network) if network else self.despawn_time
         
         async with self.ducks_lock:
-            # Check each channel's single active duck
-            for norm_channel, ducks in list(self.active_ducks.items()):
+            # Check each channel's active ducks
+            for channel_key, ducks in list(self.active_ducks.items()):
                 # Filter ducks that are still within lifespan
                 remaining_ducks = []
                 for duck in ducks:
@@ -886,22 +914,49 @@ shop_extra_magazine = 400
                     else:
                         total_removed += 1
                         age_minutes = int(age / 60)
-                        self.log_action(f"Despawning duck in {norm_channel} after {age_minutes} minutes")
-                        # Announce quiet despawn to the channel (legacy styling)
-                        # Find the network for this channel to send the message
+                        self.log_action(f"Despawning duck in {channel_key} after {age_minutes} minutes")
+                        
+                        # Find the network and channel for this duck
                         target_network = None
-                        for net in self.networks.values():
-                            if norm_channel in net.channels:
-                                target_network = net
-                                break
-                        if target_network:
-                            await self.send_message(target_network, norm_channel, self.colorize("The duck flies away.     ·°'`'°-.,¸¸.·°'`", 'grey'))
+                        target_channel = None
+                        
+                        if ':' in channel_key:
+                            # New format: network:channel
+                            network_name, channel_name = channel_key.split(':', 1)
+                            for net in self.networks.values():
+                                if net.name == network_name:
+                                    target_network = net
+                                    # Find the actual channel name (case-sensitive)
+                                    for ch in net.channels.keys():
+                                        if self.normalize_channel(ch) == channel_name:
+                                            target_channel = ch
+                                            break
+                                    break
+                        else:
+                            # Old format - find by normalized channel name
+                            for net in self.networks.values():
+                                for ch in net.channels.keys():
+                                    if self.normalize_channel(ch) == channel_key:
+                                        target_network = net
+                                        target_channel = ch
+                                        break
+                                if target_network:
+                                    break
+                        
+                        if target_network and target_channel:
+                            await self.send_message(target_network, target_channel, self.colorize("The duck flies away.     ·°'`'°-.,¸¸.·°'`", 'grey'))
+                        
                         # Quietly unconfiscate all on this channel when a duck despawns
-                        self.unconfiscate_confiscated_in_channel(norm_channel)
+                        if target_network and target_channel:
+                            self.unconfiscate_confiscated_in_channel(target_channel, target_network)
+                        else:
+                            # Fallback for old format
+                            self.unconfiscate_confiscated_in_channel(channel_key)
+                            
                 if remaining_ducks:
-                    self.active_ducks[norm_channel] = remaining_ducks
+                    self.active_ducks[channel_key] = remaining_ducks
                 else:
-                    del self.active_ducks[norm_channel]
+                    del self.active_ducks[channel_key]
     
     async def handle_bang(self, user, channel, network: NetworkConnection):
         """Handle !bang command"""
@@ -910,7 +965,7 @@ shop_extra_magazine = 400
             return
         
         player = self.get_player(user)
-        channel_stats = self.get_channel_stats(user, channel)
+        channel_stats = self.get_channel_stats(user, channel, network)
         
         if channel_stats['confiscated']:
             await self.send_message(network, channel, self.pm(user, "You are not armed."))
@@ -930,8 +985,8 @@ shop_extra_magazine = 400
         
         # Check if there is a duck in this channel
         async with self.ducks_lock:
-            norm_channel = self.normalize_channel(channel)
-            if norm_channel not in self.active_ducks:
+            channel_key = self.get_network_channel_key(network, channel)
+            if channel_key not in self.active_ducks:
                 # Infrared Detector: if active AND has uses, allow safe trigger lock and consume one use
                 now = time.time()
                 if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
@@ -975,7 +1030,7 @@ shop_extra_magazine = 400
                     if insured:
                         channel_stats['confiscated'] = False
                     # Mirror on victim can add extra penalty if shooter lacks sunglasses
-                    vstats = self.get_channel_stats(victim, channel)
+                    vstats = self.get_channel_stats(victim, channel, network)
                     if vstats.get('mirror_until', 0) > now and not (channel_stats.get('sunglasses_until', 0) > now):
                         extra = -1
                         if channel_stats.get('liability_insurance_until', 0) > now:
@@ -989,10 +1044,7 @@ shop_extra_magazine = 400
                 return
             
             # Target the active duck in this channel
-            target_duck = self.active_ducks[norm_channel][0]
-            
-            # Get channel-specific stats
-            channel_stats = self.get_channel_stats(user, channel)
+            target_duck = self.active_ducks[channel_key][0]
             
             # Reliability (jam) check before consuming ammo
             props = self.get_level_properties(channel_stats['xp'])
@@ -1057,7 +1109,7 @@ shop_extra_magazine = 400
                         channel_stats['confiscated'] = False
                     else:
                         channel_stats['confiscated'] = True
-                    vstats = self.get_channel_stats(victim, channel)
+                    vstats = self.get_channel_stats(victim, channel, network)
                     if vstats.get('mirror_until', 0) > now2 and not (channel_stats.get('sunglasses_until', 0) > now2):
                         extra = -1
                         if channel_stats.get('liability_insurance_until', 0) > now2:
@@ -1093,19 +1145,19 @@ shop_extra_magazine = 400
                 return
             
             # Remove if dead
-            if duck_killed and norm_channel in self.active_ducks:
+            if duck_killed and channel_key in self.active_ducks:
                 # Remove the first (oldest) duck
-                if self.active_ducks[norm_channel]:
-                    self.active_ducks[norm_channel].pop(0)
-                if not self.active_ducks[norm_channel]:
-                    del self.active_ducks[norm_channel]
+                if self.active_ducks[channel_key]:
+                    self.active_ducks[channel_key].pop(0)
+                if not self.active_ducks[channel_key]:
+                    del self.active_ducks[channel_key]
                 # Quietly unconfiscate all on this channel
-                self.unconfiscate_confiscated_in_channel(channel)
+                self.unconfiscate_confiscated_in_channel(channel, network)
             channel_stats['last_duck_time'] = time.time()  # Record when duck was shot
             if duck_killed:
                 # Only record when duck is actually killed
                 channel_stats['ducks_shot'] += 1
-                self.channel_last_duck_time[norm_channel] = time.time()
+                self.channel_last_duck_time[channel_key] = time.time()
                 # Base XP for kill (golden vs regular)
                 if target_duck['golden']:
                     channel_stats['golden_ducks'] += 1
@@ -1173,12 +1225,12 @@ shop_extra_magazine = 400
             return
         
         player = self.get_player(user)
-        channel_stats = self.get_channel_stats(user, channel)
+        channel_stats = self.get_channel_stats(user, channel, network)
         
         # Check if there is a duck in this channel
         async with self.ducks_lock:
-            norm_channel = self.normalize_channel(channel)
-            if norm_channel not in self.active_ducks:
+            channel_key = self.get_network_channel_key(network, channel)
+            if channel_key not in self.active_ducks:
                 self.log_action(f"No ducks to befriend in {channel} - active_ducks keys: {list(self.active_ducks.keys())}")
                 # Apply random penalty (-1 to -10) for befriending when no ducks are present
                 penalty = -random.randint(1, 10)
@@ -1188,7 +1240,7 @@ shop_extra_magazine = 400
                 return
             
             # Get the active duck
-            duck = self.active_ducks[norm_channel][0]
+            duck = self.active_ducks[channel_key][0]
             
             # Accuracy-style check for befriending (duck might not notice)
             bef_roll = random.random()
@@ -1226,12 +1278,12 @@ shop_extra_magazine = 400
             # Remove the duck if fully befriended
             if bef_killed:
                 # Remove FIFO
-                if self.active_ducks[norm_channel]:
-                    self.active_ducks[norm_channel].pop(0)
-                if not self.active_ducks[norm_channel]:
-                    del self.active_ducks[norm_channel]
+                if self.active_ducks[channel_key]:
+                    self.active_ducks[channel_key].pop(0)
+                if not self.active_ducks[channel_key]:
+                    del self.active_ducks[channel_key]
                 # Quietly unconfiscate all on this channel
-                self.unconfiscate_confiscated_in_channel(channel)
+                self.unconfiscate_confiscated_in_channel(channel, network)
         
         # Award XP for befriending when completed
         if bef_killed:
@@ -1267,7 +1319,7 @@ shop_extra_magazine = 400
             return
         
         player = self.get_player(user)
-        channel_stats = self.get_channel_stats(user, channel)
+        channel_stats = self.get_channel_stats(user, channel, network)
         
         if channel_stats['confiscated']:
             await self.send_message(network, channel, self.pm(user, "You are not armed."))
@@ -1314,11 +1366,11 @@ shop_extra_magazine = 400
             for item_id, item in self.shop_items.items():
                 # Dynamic costs for upgrades (22/23) are per-player based on current level
                 if item_id == 22:
-                    lvl = self.get_channel_stats(user, channel).get('mag_upgrade_level', 0)
+                    lvl = self.get_channel_stats(user, channel, network).get('mag_upgrade_level', 0)
                     dyn_cost = min(1000, 200 * (lvl + 1))
                     items.append(f"{item_id}- {item['name']} ({dyn_cost} xp)")
                 elif item_id == 23:
-                    lvl = self.get_channel_stats(user, channel).get('mag_capacity_level', 0)
+                    lvl = self.get_channel_stats(user, channel, network).get('mag_capacity_level', 0)
                     dyn_cost = min(1000, 200 * (lvl + 1))
                     items.append(f"{item_id}- {item['name']} ({dyn_cost} xp)")
                 else:
@@ -1350,7 +1402,7 @@ shop_extra_magazine = 400
                     return
                 
                 player = self.get_player(user)
-                channel_stats = self.get_channel_stats(user, channel)
+                channel_stats = self.get_channel_stats(user, channel, network)
                 item = self.shop_items[item_id]
                 # Determine dynamic cost for upgrades
                 cost = item['cost']
@@ -1455,7 +1507,7 @@ shop_extra_magazine = 400
                         channel_stats['xp'] += item['cost']
                     else:
                         target = args[1]
-                        tstats = self.get_channel_stats(target, channel)
+                        tstats = self.get_channel_stats(target, channel, network)
                         # If target has sunglasses active, mirror is countered
                         if tstats.get('sunglasses_until', 0) > time.time():
                             await self.send_message(network, channel, self.pm(user, f"{target} is wearing sunglasses. The mirror has no effect."))
@@ -1469,7 +1521,7 @@ shop_extra_magazine = 400
                         channel_stats['xp'] += item['cost']
                     else:
                         target = args[1]
-                        tstats = self.get_channel_stats(target, channel)
+                        tstats = self.get_channel_stats(target, channel, network)
                         tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 3600)
                         await self.send_message(network, channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 16:  # Water bucket: soak target for 1h (target required)
@@ -1478,7 +1530,7 @@ shop_extra_magazine = 400
                         channel_stats['xp'] += item['cost']
                     else:
                         target = args[1]
-                        tstats = self.get_channel_stats(target, channel)
+                        tstats = self.get_channel_stats(target, channel, network)
                         tstats['soaked_until'] = max(tstats.get('soaked_until', 0), time.time() + 3600)
                         await self.send_message(network, channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 17:  # Sabotage: jam target immediately (target required)
@@ -1487,7 +1539,7 @@ shop_extra_magazine = 400
                         channel_stats['xp'] += item['cost']
                     else:
                         target = args[1]
-                        tstats = self.get_channel_stats(target, channel)
+                        tstats = self.get_channel_stats(target, channel, network)
                         tstats['jammed'] = True
                         await self.send_message(network, channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 18:  # Life insurance: protect against confiscation for 24h
@@ -1603,7 +1655,7 @@ shop_extra_magazine = 400
             return
         
         player = self.players[target_user]
-        channel_stats = self.get_channel_stats(target_user, channel)
+        channel_stats = self.get_channel_stats(target_user, channel, network)
         
         # Calculate total stats across all channels
         total_ducks = sum(stats['ducks_shot'] for stats in player['channel_stats'].values())
@@ -1716,7 +1768,7 @@ shop_extra_magazine = 400
             # Sort players by ducks killed in this channel
             player_channel_stats = []
             for player_name, player_data in self.players.items():
-                channel_stats = self.get_channel_stats(player_name, channel)
+                channel_stats = self.get_channel_stats(player_name, channel, network)
                 if channel_stats['ducks_shot'] > 0:
                     player_channel_stats.append((player_name, channel_stats['ducks_shot']))
             
@@ -1735,7 +1787,7 @@ shop_extra_magazine = 400
             # Sort players by XP in this channel (default behavior)
             player_channel_xp = []
             for player_name, player_data in self.players.items():
-                channel_stats = self.get_channel_stats(player_name, channel)
+                channel_stats = self.get_channel_stats(player_name, channel, network)
                 if channel_stats['xp'] > 0:
                     player_channel_xp.append((player_name, channel_stats['xp']))
             
@@ -1765,7 +1817,7 @@ shop_extra_magazine = 400
             return
         
         player = self.get_player(user)
-        channel_stats = self.get_channel_stats(user, channel)
+        channel_stats = self.get_channel_stats(user, channel, network)
         
         # Check if there's currently an active duck
         norm_channel = self.normalize_channel(channel)
@@ -1806,11 +1858,11 @@ shop_extra_magazine = 400
                 count = min(int(args[0]), self.get_network_max_ducks(network))
             
             spawned = 0
-            norm_channel = self.normalize_channel(channel)
+            channel_key = self.get_network_channel_key(network, channel)
             async with self.ducks_lock:
-                if norm_channel not in self.active_ducks:
-                    self.active_ducks[norm_channel] = []
-                remaining_capacity = max(0, self.get_network_max_ducks(network) - len(self.active_ducks[norm_channel]))
+                if channel_key not in self.active_ducks:
+                    self.active_ducks[channel_key] = []
+                remaining_capacity = max(0, self.get_network_max_ducks(network) - len(self.active_ducks[channel_key]))
             to_spawn = min(count, remaining_capacity)
             for _ in range(to_spawn):
                 # Do not push back the automatic timer when spawning manually
@@ -1824,14 +1876,14 @@ shop_extra_magazine = 400
         elif command == "spawngold":
             # Spawn a golden duck (respect per-channel capacity)
             async with self.ducks_lock:
-                norm_channel = self.normalize_channel(channel)
-                if norm_channel not in self.active_ducks:
-                    self.active_ducks[norm_channel] = []
-                if len(self.active_ducks[norm_channel]) >= self.get_network_max_ducks(network):
+                channel_key = self.get_network_channel_key(network, channel)
+                if channel_key not in self.active_ducks:
+                    self.active_ducks[channel_key] = []
+                if len(self.active_ducks[channel_key]) >= self.get_network_max_ducks(network):
                     await self.send_notice(network, user, f"Cannot spawn golden duck in {channel} - already at maximum ({self.get_network_max_ducks(network)})")
                     return
                 golden_duck = {'golden': True, 'health': 5, 'spawn_time': time.time(), 'revealed': False}
-                self.active_ducks[norm_channel].append(golden_duck)
+                self.active_ducks[channel_key].append(golden_duck)
             # Create duck art with custom coloring: dust=gray, duck=yellow, QUACK=red/green/gold
             dust = "-.,¸¸.-·°'`'°·-.,¸¸.-·°'`'°· "
             duck = "\\_O<"
@@ -1849,7 +1901,7 @@ shop_extra_magazine = 400
         elif command == "rearm" and args:
             target = args[0]
             if target in self.players:
-                channel_stats = self.get_channel_stats(target, channel)
+                channel_stats = self.get_channel_stats(target, channel, network)
                 channel_stats['confiscated'] = False
                 clip_size = channel_stats.get('clip_size', 10)
                 mags_max = channel_stats.get('magazines_max', 2)
@@ -1860,7 +1912,7 @@ shop_extra_magazine = 400
         elif command == "disarm" and args:
             target = args[0]
             if target in self.players:
-                channel_stats = self.get_channel_stats(target, channel)
+                channel_stats = self.get_channel_stats(target, channel, network)
                 channel_stats['confiscated'] = True
                 # Optionally also empty ammo
                 channel_stats['ammo'] = 0
@@ -1887,7 +1939,7 @@ shop_extra_magazine = 400
             target = args[0]
             channel = args[1]
             if target in self.players:
-                channel_stats = self.get_channel_stats(target, channel)
+                channel_stats = self.get_channel_stats(target, channel, network)
                 channel_stats['confiscated'] = True
                 channel_stats['ammo'] = 0
                 await self.send_notice(network, user, f"{target} has been disarmed in {channel}.")
@@ -1935,21 +1987,19 @@ shop_extra_magazine = 400
             channel = args[0]
             self.log_action(f"Clear command received for {channel} from {user}")
             
-            norm_channel = self.normalize_channel(channel)
-            # Clear all player data for this channel (normalize player keys)
+            channel_key = self.get_network_channel_key(network, channel)
+            # Clear all player data for this channel (network-prefixed keys)
             cleared_count = 0
             for _player_name, player_data in self.players.items():
                 stats_map = player_data.get('channel_stats', {})
-                to_delete = [ch for ch in list(stats_map.keys()) if self.normalize_channel(ch) == norm_channel]
-                if to_delete:
-                    for ch in to_delete:
-                        del stats_map[ch]
+                if channel_key in stats_map:
+                    del stats_map[channel_key]
                     cleared_count += 1
             
             # Clear ducks for this channel
             async with self.ducks_lock:
-                if norm_channel in self.active_ducks:
-                    del self.active_ducks[norm_channel]
+                if channel_key in self.active_ducks:
+                    del self.active_ducks[channel_key]
             
             # Clear network-specific channel data
             if channel in network.channel_next_spawn:
