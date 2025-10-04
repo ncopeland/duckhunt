@@ -50,7 +50,7 @@ class DuckHuntBot:
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
         # Legacy global fields retained for backward compatibility (unused by per-channel scheduler)
         self.duck_spawn_time = None
-        self.version = "1.0_build42"
+        self.version = "1.0_build43"
         self.ducks_lock = asyncio.Lock()
         # Next spawn pre-notice tracking
         self.next_spawn_channel = None
@@ -880,12 +880,7 @@ shop_extra_magazine = 400
         total_removed = 0
         despawn_time = self.get_network_despawn_time(network) if network else self.despawn_time
         
-        # self.log_action(f"[DEBUG] despawn_old_ducks called at {current_time}")
-        
         async with self.ducks_lock:
-            # Debug: log despawn check (throttled to avoid flooding)
-            if self.active_ducks:
-                pass  # reduced debug noise
             
             # Check each channel's single active duck
             for norm_channel, ducks in list(self.active_ducks.items()):
@@ -897,6 +892,8 @@ shop_extra_magazine = 400
                         remaining_ducks.append(duck)
                     else:
                         total_removed += 1
+                        age_minutes = int(age / 60)
+                        self.log_action(f"Despawning duck in {norm_channel} after {age_minutes} minutes")
                         # Announce quiet despawn to the channel (legacy styling)
                         # Find the network for this channel to send the message
                         target_network = None
