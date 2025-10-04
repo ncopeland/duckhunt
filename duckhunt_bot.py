@@ -1390,7 +1390,7 @@ shop_extra_magazine = 400
                         if switched:
                             await self.send_message(network, channel, self.pm(user, f"You switched to AP ammo. Next 20 shots are AP. {self.colorize(f'[-{cost} XP]', 'red')}"))
                         else:
-                            await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased AP ammo.', 'green')} Next 20 shots deal extra damage to golden ducks. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                            await self.send_message(network, channel, self.pm(user, f"You purchased AP ammo. Next 20 shots deal extra damage to golden ducks. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 4:  # Explosive ammo: next 20 shots do +1 dmg vs golden and boost accuracy
                     ap = channel_stats.get('ap_shots', 0)
                     ex = channel_stats.get('explosive_shots', 0)
