@@ -690,7 +690,7 @@ shop_extra_magazine = 400
         ]
         title = titles[min(new_level-1, len(titles)-1)] if new_level > 0 else "unknown"
         if new_level > prev_level:
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('PROMOTION', 'green', bold=True)}     {self.colorize(f'You are promoted to level {new_level} ({title}) in {channel}.', 'green')}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('PROMOTION', 'green', bold=True)} {self.colorize(f'You are promoted to level {new_level} ({title}) in {channel}.', 'green')}"))
         else:
             await self.send_message(network, channel, self.pm(user, f"{self.colorize('DEMOTION', 'red', bold=True)}     {self.colorize(f'You are demoted to level {new_level} ({title}) in {channel}.', 'red')}"))
         stats['level'] = new_level
@@ -1144,7 +1144,7 @@ shop_extra_magazine = 400
         else:
             if duck_killed:
                 sign = '+' if xp_gain > 0 else ''
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}.{self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  {self.colorize('You shot down the duck', 'green', bold=True)} in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. {self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
             else:
                 remaining = max(0, target_duck['health'])
                 if target_duck['golden']:
