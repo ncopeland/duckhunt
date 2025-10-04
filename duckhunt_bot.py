@@ -2026,8 +2026,9 @@ shop_extra_magazine = 400
                         keys_to_delete.append(key)
                 
                 # Delete all matching keys
-                for key in keys_to_delete:
-                    del stats_map[key]
+                if keys_to_delete:
+                    for key in keys_to_delete:
+                        del stats_map[key]
                     cleared_count += 1
             
             # Clear ducks for this channel
