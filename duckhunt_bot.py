@@ -1148,7 +1148,7 @@ shop_extra_magazine = 400
             else:
                 remaining = max(0, target_duck['health'])
                 if target_duck['golden']:
-                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize(f'life -{damage}]', 'red')}"))
+                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"))
         # Announce promotion/demotion if level changed (any XP change path)
         if xp_gain != 0:
             await self.check_level_change(user, channel, channel_stats, prev_xp, network)
