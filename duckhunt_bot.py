@@ -1238,12 +1238,12 @@ shop_extra_magazine = 400
             prev_xp = channel_stats['xp']
             channel_stats['xp'] += xp_gained
             channel_stats['befriended_ducks'] += 1
-            response = f"{self.colorize('FRIEND', 'red', bold=True)} "
+            response = f"{self.colorize('*QUAACK!*', 'red', bold=True)} "
             if duck['golden']:
                 response += "The GOLDEN DUCK"
             else:
                 response += "The DUCK"
-            response += f" was befriended! {self.colorize('\\_0<', 'yellow')} {self.colorize('*QUAACK!*', 'red')} {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize(f'[+{xp_gained} xp]', 'green')}"
+            response += f" was befriended! {self.colorize('\\_0<', 'yellow')} {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize(f'[+{xp_gained} xp]', 'green')}"
             await self.send_message(network, channel, self.pm(user, response))
             self.log_action(f"{user} befriended a {'golden ' if duck['golden'] else ''}duck in {channel}")
             await self.check_level_change(user, channel, channel_stats, prev_xp, network)
