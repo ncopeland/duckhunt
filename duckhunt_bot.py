@@ -947,7 +947,7 @@ shop_extra_magazine = 400
                 prev_xp = channel_stats['xp']
                 channel_stats['xp'] = max(0, channel_stats['xp'] + total_pen)
                 channel_stats['wild_fires'] += 1
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('Luckily you missed, but what did you aim at ? There is no duck in the area...', 'red')}   {self.colorize(f'[missed: {miss_pen} xp]', 'red')} {self.colorize(f'[wild fire: {wild_pen} xp]', 'red')}   {self.colorize('[GUN CONFISCATED: wild fire]', 'red', bold=True)}"))
+                await self.send_message(network, channel, self.pm(user, f"Luckily you missed, but what did you aim at? There is no duck in the area... {self.colorize(f'[missed: {miss_pen} xp]', 'red')} {self.colorize(f'[wild fire: {wild_pen} xp]', 'red')} {self.colorize('[GUN CONFISCATED: wild fire]', 'red', bold=True)}"))
                 # Accidental shooting (wild fire): 50% chance to hit a random player
                 victim = None
                 if channel in network.channels and network.channels[channel]:
