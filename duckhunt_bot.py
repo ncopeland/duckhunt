@@ -1933,8 +1933,6 @@ shop_extra_magazine = 400
             await self.send_notice(network, user, f"Parted {channel} on {network.name}")
         elif command == "clear" and args:
             channel = args[0]
-            # Note: This is a global command, so we can't check a specific network
-            # For now, just log the clear request
             self.log_action(f"Clear command received for {channel} from {user}")
             
             norm_channel = self.normalize_channel(channel)
@@ -1953,10 +1951,19 @@ shop_extra_magazine = 400
                 if norm_channel in self.active_ducks:
                     del self.active_ducks[norm_channel]
             
-            # Note: This is a global command, so we can't send to a specific network
-            # For now, just log the clear completion
-            self.log_action(f"{user} cleared all data for {channel}")
+            # Clear network-specific channel data
+            if channel in network.channel_next_spawn:
+                del network.channel_next_spawn[channel]
+            if channel in network.channel_pre_notice:
+                del network.channel_pre_notice[channel]
+            if channel in network.channel_notice_sent:
+                del network.channel_notice_sent[channel]
+            if channel in network.channel_last_spawn:
+                del network.channel_last_spawn[channel]
+            
+            self.log_action(f"{user} cleared all data for {channel} ({cleared_count} players affected)")
             self.save_player_data()
+            await self.send_notice(network, user, f"Cleared all data for {channel} ({cleared_count} players affected)")
         elif command == "part" and args:
             channel = args[0]
             # Note: This is a global command, so we can't part from a specific network
