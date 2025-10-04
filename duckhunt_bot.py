@@ -1988,12 +1988,25 @@ shop_extra_magazine = 400
             self.log_action(f"Clear command received for {channel} from {user}")
             
             channel_key = self.get_network_channel_key(network, channel)
-            # Clear all player data for this channel (network-prefixed keys)
+            norm_channel = self.normalize_channel(channel)
+            # Clear all player data for this channel (both old and new key formats)
             cleared_count = 0
             for _player_name, player_data in self.players.items():
                 stats_map = player_data.get('channel_stats', {})
+                keys_to_delete = []
+                
+                # Check for new format key (network:channel)
                 if channel_key in stats_map:
-                    del stats_map[channel_key]
+                    keys_to_delete.append(channel_key)
+                
+                # Check for old format keys (just channel name, with or without trailing spaces)
+                for key in list(stats_map.keys()):
+                    if self.normalize_channel(key) == norm_channel and key not in keys_to_delete:
+                        keys_to_delete.append(key)
+                
+                # Delete all matching keys
+                for key in keys_to_delete:
+                    del stats_map[key]
                     cleared_count += 1
             
             # Clear ducks for this channel
