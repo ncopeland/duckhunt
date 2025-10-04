@@ -1101,10 +1101,10 @@ shop_extra_magazine = 400
                     del self.active_ducks[norm_channel]
                 # Quietly unconfiscate all on this channel
                 self.unconfiscate_confiscated_in_channel(channel)
-            channel_stats['ducks_shot'] += 1
             channel_stats['last_duck_time'] = time.time()  # Record when duck was shot
             if duck_killed:
                 # Only record when duck is actually killed
+                channel_stats['ducks_shot'] += 1
                 self.channel_last_duck_time[norm_channel] = time.time()
                 # Base XP for kill (golden vs regular)
                 if target_duck['golden']:
