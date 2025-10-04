@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0
+Duck Hunt IRC Bot v1.0_build52
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -47,7 +47,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build51"
+        self.version = "1.0_build52"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-network support
@@ -322,7 +322,11 @@ shop_extra_magazine = 400
     
     async def send_network(self, network: NetworkConnection, message):
         """Send message to IRC server for a specific network"""
-        if network.sock:
+        if network.writer:  # SSL connection
+            network.writer.write(f"{message}\r\n".encode('utf-8'))
+            await network.writer.drain()
+            self.log_message("SEND", message)
+        elif network.sock:  # Non-SSL connection
             await asyncio.get_event_loop().sock_sendall(network.sock, f"{message}\r\n".encode('utf-8'))
             self.log_message("SEND", message)
     
@@ -375,16 +379,24 @@ shop_extra_magazine = 400
         self.log_action(f"Connecting to {server}:{port} (network: {network.name})")
         
         if network.config.get('ssl', 'off').lower() == 'on':
+            # Create SSL context and connect using asyncio
             network.ssl_context = ssl.create_default_context()
-            network.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            network.sock = network.ssl_context.wrap_socket(network.sock, server_hostname=server)
+            network.reader, network.writer = await asyncio.open_connection(
+                server, port, ssl=network.ssl_context, server_hostname=server
+            )
+            # Get the underlying socket for compatibility with existing code
+            network.sock = network.writer.get_extra_info('socket')
+            self.log_action(f"SSL connection established to {server}:{port}")
         else:
-            network.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        
-        # Use asyncio for non-blocking connect
-        await asyncio.get_event_loop().sock_connect(network.sock, (server, port))
-        # Set socket to non-blocking mode
-        network.sock.setblocking(False)
+            # Use AF_INET6 which supports both IPv4 and IPv6 (IPv4-mapped IPv6 addresses)
+            network.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            
+            # Use asyncio for non-blocking connect
+            await asyncio.get_event_loop().sock_connect(network.sock, (server, port))
+            # Set socket to non-blocking mode
+            network.sock.setblocking(False)
+            network.reader = None
+            network.writer = None
         
         # Send IRC handshake
         bot_nicks = network.config['bot_nick'].split(',')
@@ -627,7 +639,7 @@ shop_extra_magazine = 400
         self.apply_level_bonuses(stats)
         # Initialize ammo/magazines to level-based capacities for newly created stats
         if created_new:
-            stats['ammo'] = stats.get('clip_size', 10)
+            stats['ammo'] = stats.get('magazine_capacity', 10)
             stats['magazines'] = stats.get('magazines_max', 2)
         return stats
 
@@ -709,7 +721,7 @@ shop_extra_magazine = 400
             'level': level,
             'accuracy_pct': acc,
             'reliability_pct': rel,
-            'clip_size': clip,
+            'magazine_capacity': clip,
             'magazines_max': clips,
             'miss_penalty': -abs(misspen),
             'wild_penalty': -abs(wildpen),
@@ -736,12 +748,12 @@ shop_extra_magazine = 400
     def apply_level_bonuses(self, channel_stats):
         props = self.get_level_properties(channel_stats['xp'])
         # Base capacities from level table
-        base_clip = props['clip_size']
+        base_magazine_capacity = props['magazine_capacity']
         base_mags = props['magazines_max']
         # Apply player upgrades if present
-        upgraded_clip = base_clip + int(channel_stats.get('mag_upgrade_level', 0))
+        upgraded_magazine_capacity = base_magazine_capacity + int(channel_stats.get('mag_upgrade_level', 0))
         upgraded_mags = base_mags + int(channel_stats.get('mag_capacity_level', 0))
-        channel_stats['clip_size'] = upgraded_clip
+        channel_stats['magazine_capacity'] = upgraded_magazine_capacity
         channel_stats['magazines_max'] = upgraded_mags
         channel_stats['miss_penalty'] = props['miss_penalty']
         channel_stats['wild_penalty'] = props['wild_penalty']
@@ -993,15 +1005,15 @@ shop_extra_magazine = 400
             return
         
         if channel_stats['jammed']:
-            clip_size = channel_stats.get('clip_size', 10)
+            magazine_capacity = channel_stats.get('magazine_capacity', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red')} Your gun is {self.colorize('JAMMED', 'red', bold=True)} you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red')} Your gun is {self.colorize('JAMMED', 'red', bold=True)} you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{magazine_capacity} | Magazines : {channel_stats['magazines']}/{mags_max}"))
             return
         
         if channel_stats['ammo'] <= 0:
-            clip_size = channel_stats.get('clip_size', 10)
+            magazine_capacity = channel_stats.get('magazine_capacity', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLICK*', 'red')} EMPTY MAGAZINE | Ammo: 0/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLICK*', 'red')} EMPTY MAGAZINE | Ammo: 0/{magazine_capacity} | Magazines: {channel_stats['magazines']}/{mags_max}"))
             return
         
         # Check if there is a duck in this channel
@@ -1081,9 +1093,9 @@ shop_extra_magazine = 400
                 reliability = reliability + (1.0 - reliability) * 0.10
             if random.random() > reliability:
                 channel_stats['jammed'] = True
-                clip_size = channel_stats.get('clip_size', 10)
+                magazine_capacity = channel_stats.get('magazine_capacity', 10)
                 mags_max = channel_stats.get('magazines_max', 2)
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red')} Your gun is {self.colorize('JAMMED', 'red', bold=True)} you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines : {channel_stats['magazines']}/{mags_max}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red')} Your gun is {self.colorize('JAMMED', 'red', bold=True)} you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{magazine_capacity} | Magazines : {channel_stats['magazines']}/{mags_max}"))
                 self.save_player_data()
                 return
 
@@ -1349,27 +1361,27 @@ shop_extra_magazine = 400
         # Only allow reload if out of bullets, jammed, or sabotaged
         if channel_stats['jammed']:
             channel_stats['jammed'] = False
-            clip_size = channel_stats.get('clip_size', 10)
+            magazine_capacity = channel_stats.get('magazine_capacity', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*Crr..CLICK*', 'red')} You unjam your gun. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('*Crr..CLICK*', 'red')} You unjam your gun. | Ammo: {channel_stats['ammo']}/{magazine_capacity} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         elif channel_stats['sabotaged']:
             channel_stats['sabotaged'] = False
-            clip_size = channel_stats.get('clip_size', 10)
+            magazine_capacity = channel_stats.get('magazine_capacity', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            await self.send_message(network, channel, self.pm(user, f"*Crr..CLICK*     You fix the sabotage. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"*Crr..CLICK*     You fix the sabotage. | Ammo: {channel_stats['ammo']}/{magazine_capacity} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         elif channel_stats['ammo'] == 0:
             if channel_stats['magazines'] <= 0:
                 await self.send_message(network, channel, self.pm(user, "You have no filled magazines to reload your weapon."))
             else:
-                clip_size = channel_stats.get('clip_size', 10)
-                channel_stats['ammo'] = clip_size
+                magazine_capacity = channel_stats.get('magazine_capacity', 10)
+                channel_stats['ammo'] = magazine_capacity
                 channel_stats['magazines'] -= 1
                 mags_max = channel_stats.get('magazines_max', 2)
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK CLACK*', 'red', bold=True)} You reload. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+                await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK CLACK*', 'red', bold=True)} You reload. | Ammo: {channel_stats['ammo']}/{magazine_capacity} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         else:
-            clip_size = channel_stats.get('clip_size', 10)
+            magazine_capacity = channel_stats.get('magazine_capacity', 10)
             mags_max = channel_stats.get('magazines_max', 2)
-            await self.send_message(network, channel, self.pm(user, f"Your gun doesn't need to be reloaded. | Ammo: {channel_stats['ammo']}/{clip_size} | Magazines: {channel_stats['magazines']}/{mags_max}"))
+            await self.send_message(network, channel, self.pm(user, f"Your gun doesn't need to be reloaded. | Ammo: {channel_stats['ammo']}/{magazine_capacity} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         
         self.save_player_data()
     
@@ -1441,10 +1453,10 @@ shop_extra_magazine = 400
                 
                 # Apply item effects
                 if item_id == 1:  # Extra bullet
-                    clip_size = channel_stats.get('clip_size', 10)
-                    if channel_stats['ammo'] < clip_size:
-                        channel_stats['ammo'] = min(clip_size, channel_stats['ammo'] + 1)
-                        await self.send_message(network, channel, self.pm(user, f"You just added an extra bullet. {self.colorize(f'[-{cost} XP]', 'red')} | Ammo: {channel_stats['ammo']}/{clip_size}"))
+                    magazine_capacity = channel_stats.get('magazine_capacity', 10)
+                    if channel_stats['ammo'] < magazine_capacity:
+                        channel_stats['ammo'] = min(magazine_capacity, channel_stats['ammo'] + 1)
+                        await self.send_message(network, channel, self.pm(user, f"You just added an extra bullet. {self.colorize(f'[-{cost} XP]', 'red')} | Ammo: {channel_stats['ammo']}/{magazine_capacity}"))
                     else:
                         await self.send_message(network, channel, self.pm(user, f"Your magazine is already full."))
                         channel_stats['xp'] += item['cost']  # Refund XP
@@ -1569,7 +1581,7 @@ shop_extra_magazine = 400
                 elif item_id == 19:  # Liability insurance: reduce penalties by 50% for 24h
                     channel_stats['liability_insurance_until'] = max(channel_stats.get('liability_insurance_until', 0), time.time() + 24*3600)
                     await self.send_message(network, channel, self.pm(user, f"You purchase liability insurance. Penalties reduced by 50% for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                elif item_id == 22:  # Upgrade Magazine: increase clip size (level 1-5), dynamic cost per level
+                elif item_id == 22:  # Upgrade Magazine: increase magazine_capacity size (level 1-5), dynamic cost per level
                     current_level = channel_stats.get('mag_upgrade_level', 0)
                     if current_level >= 5:
                         await self.send_message(network, channel, self.pm(user, "Your magazine is already fully upgraded."))
@@ -1577,11 +1589,10 @@ shop_extra_magazine = 400
                     else:
                         next_level = current_level + 1
                         channel_stats['mag_upgrade_level'] = next_level
-                        # Recompute clip_size via level bonuses so upgrades stack correctly
+                        # Recompute magazine_capacity via level bonuses so upgrades stack correctly
                         self.apply_level_bonuses(channel_stats)
-                        # Top off ammo by 1 up to new clip size
-                        channel_stats['ammo'] = min(channel_stats['clip_size'], channel_stats['ammo'] + 1)
-                        await self.send_message(network, channel, self.pm(user, f"Upgrade applied. Magazine capacity increased to {channel_stats['clip_size']}. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                        # Don't add ammo - just increase capacity. Current ammo stays the same.
+                        await self.send_message(network, channel, self.pm(user, f"Upgrade applied. Magazine capacity increased to {channel_stats['magazine_capacity']}. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 10:  # Four-leaf clover: +N XP per duck for 24h; single active at a time
                     now = time.time()
                     duration = 24 * 3600
@@ -1626,11 +1637,11 @@ shop_extra_magazine = 400
                 elif item_id == 5:  # Repurchase confiscated gun
                     if channel_stats['confiscated']:
                         channel_stats['confiscated'] = False
-                        clip_size = channel_stats.get('clip_size', 10)
+                        magazine_capacity = channel_stats.get('magazine_capacity', 10)
                         mags_max = channel_stats.get('magazines_max', 2)
-                        channel_stats['ammo'] = clip_size
+                        channel_stats['ammo'] = magazine_capacity
                         channel_stats['magazines'] = mags_max
-                        await self.send_message(network, channel, self.pm(user, f"You repurchased your confiscated gun. {self.colorize(f'[-{cost} XP]', 'red')} | Ammo: {clip_size}/{clip_size} | Magazines: {mags_max}/{mags_max}"))
+                        await self.send_message(network, channel, self.pm(user, f"You repurchased your confiscated gun. {self.colorize(f'[-{cost} XP]', 'red')} | Ammo: {magazine_capacity}/{magazine_capacity} | Magazines: {mags_max}/{mags_max}"))
                     else:
                         await self.send_message(network, channel, f"Your gun is not confiscated.")
                         channel_stats['xp'] += item['cost']  # Refund XP
@@ -1695,9 +1706,10 @@ shop_extra_magazine = 400
         stats_text = f"Hunting stats for {target_user} in {channel}: "
         # Accuracy display from level table (+bread/explosive not shown here)
         acc_pct = self.get_level_properties(channel_stats['xp'])['accuracy_pct']
-        clip_size = channel_stats.get('clip_size', 10)
+        magazine_capacity = channel_stats.get('magazine_capacity', 10)
         mags_max = channel_stats.get('magazines_max', 2)
-        stats_text += f"[Weapon]  ammo: {channel_stats['ammo']}/{clip_size} | mag.: {channel_stats['magazines']}/{mags_max} | jammed: {'yes' if channel_stats['jammed'] else 'no'} | confisc.: {'yes' if channel_stats['confiscated'] else 'no'}  "
+        current_ammo_in_magazine_capacity = min(channel_stats['ammo'], magazine_capacity)
+        stats_text += f"[Weapon]  ammo: {current_ammo_in_magazine_capacity}/{magazine_capacity} | mag.: {channel_stats['magazines']}/{mags_max} | jammed: {'yes' if channel_stats['jammed'] else 'no'} | confisc.: {'yes' if channel_stats['confiscated'] else 'no'}  "
         # Compute karma: proportion of good actions vs total actions
         total_bad = channel_stats.get('misses', 0) + channel_stats.get('accidents', 0) + channel_stats.get('wild_fires', 0)
         total_good = channel_stats.get('ducks_shot', 0) + channel_stats.get('befriended_ducks', 0)
@@ -1924,9 +1936,9 @@ shop_extra_magazine = 400
             if target in self.players:
                 channel_stats = self.get_channel_stats(target, channel, network)
                 channel_stats['confiscated'] = False
-                clip_size = channel_stats.get('clip_size', 10)
+                magazine_capacity = channel_stats.get('magazine_capacity', 10)
                 mags_max = channel_stats.get('magazines_max', 2)
-                channel_stats['ammo'] = clip_size
+                channel_stats['ammo'] = magazine_capacity
                 channel_stats['magazines'] = mags_max
                 await self.send_message(network, channel, f"{target} has been rearmed.")
                 self.save_player_data()
@@ -2262,16 +2274,16 @@ shop_extra_magazine = 400
         # Apply effect
         now = time.time()
         day = 24 * 3600
-        clip_size = channel_stats.get('clip_size', 10)
+        magazine_capacity = channel_stats.get('magazine_capacity', 10)
         mags_max = channel_stats.get('magazines_max', 2)
 
         async def say(msg: str) -> None:
             await self.send_message(network, channel, self.pm(user, msg))
 
         if choice == "extra_bullet":
-            if channel_stats['ammo'] < clip_size:
-                channel_stats['ammo'] = min(clip_size, channel_stats['ammo'] + 1)
-                await say(f"By searching the bushes, you find an extra bullet! | Ammo: {channel_stats['ammo']}/{clip_size}")
+            if channel_stats['ammo'] < magazine_capacity:
+                channel_stats['ammo'] = min(magazine_capacity, channel_stats['ammo'] + 1)
+                await say(f"By searching the bushes, you find an extra bullet! | Ammo: {channel_stats['ammo']}/{magazine_capacity}")
             else:
                 xp = 7
                 channel_stats['xp'] += xp
@@ -2279,11 +2291,11 @@ shop_extra_magazine = 400
         elif choice == "extra_mag":
             if channel_stats['magazines'] < mags_max:
                 channel_stats['magazines'] = min(mags_max, channel_stats['magazines'] + 1)
-                await say(f"By searching the bushes, you find an extra ammo clip! | Magazines: {channel_stats['magazines']}/{mags_max}")
+                await say(f"By searching the bushes, you find an extra ammo magazine_capacity! | Magazines: {channel_stats['magazines']}/{mags_max}")
             else:
                 xp = 20
                 channel_stats['xp'] += xp
-                await say(f"By searching the bushes, you find an extra ammo clip! You already have maximum magazines, so you gain {xp} XP instead.")
+                await say(f"By searching the bushes, you find an extra ammo magazine_capacity! You already have maximum magazines, so you gain {xp} XP instead.")
         elif choice == "sight_next":
             # If already active, convert to XP equal to shop price (shop_sight)
             if channel_stats.get('sight_next_shot', False):
@@ -2429,7 +2441,11 @@ shop_extra_magazine = 400
         
         while True:
             try:
-                data = await asyncio.get_event_loop().sock_recv(network.sock, 1024)
+                if network.reader:  # SSL connection
+                    data = await network.reader.read(1024)
+                else:  # Non-SSL connection
+                    data = await asyncio.get_event_loop().sock_recv(network.sock, 1024)
+                
                 if data:
                     # Process each line
                     for line in data.decode('utf-8').split('\r\n'):
@@ -2505,7 +2521,12 @@ shop_extra_magazine = 400
                 self.log_action(f"Error: {e}")
                 break
         
-        network.sock.close()
+        # Close connection properly
+        if network.writer:  # SSL connection
+            network.writer.close()
+            await network.writer.wait_closed()
+        elif network.sock:  # Non-SSL connection
+            network.sock.close()
 
 if __name__ == "__main__":
     bot = DuckHuntBot()

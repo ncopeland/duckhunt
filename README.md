@@ -1,4 +1,4 @@
-# Duck Hunt IRC Bot v1.0_build51
+# Duck Hunt IRC Bot v1.0_build52
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, and multi-network support. Players shoot ducks with `!bang` when they appear!
 
@@ -81,6 +81,16 @@ An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop sy
    shop_upgrade_magazine = 200
    shop_extra_magazine = 400
    ```
+
+## Changelog
+
+### v1.0_build52 (Latest)
+- **SSL/TLS Support**: Fixed SSL connectivity using proper asyncio SSL methods
+- **IPv6 Support**: Added IPv6 compatibility for servers with IPv6-only interfaces  
+- **Ammo System Fix**: Fixed `!duckstats` to show current ammo in magazine (7/7) instead of total ammo (21/7)
+- **Magazine Upgrade Fix**: Magazine capacity upgrades no longer give free ammo - only increase capacity
+- **Terminology Fix**: Replaced all "clip" references with proper "magazine" terminology
+- **Network Architecture**: Fixed duplicate channel name conflicts across different networks
 
 3. Run the bot:
    ```bash
