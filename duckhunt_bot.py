@@ -2343,7 +2343,12 @@ shop_extra_magazine = 400
                             network.channel_next_spawn[ch] = None
                             await self.spawn_duck(network, ch)
                 
-                # Duck despawn is handled in the exception handler with proper throttling
+                # Check for duck despawn (only after registration, throttled to once per second)
+                if hasattr(network, 'registration_complete'):
+                    current_time = time.time()
+                    if current_time - network.last_despawn_check >= 1.0:
+                        await self.despawn_old_ducks(network)
+                        network.last_despawn_check = current_time
                 
             except socket.error as e:
                 if e.errno == 11:  # EAGAIN/EWOULDBLOCK - no data available
@@ -2370,12 +2375,6 @@ shop_extra_magazine = 400
                                 network.channel_next_spawn[ch] = None
                                 await self.spawn_duck(network, ch)
                     
-                    # Check for duck despawn (only after registration, throttled to once per second)
-                    if hasattr(network, 'registration_complete'):
-                        current_time = time.time()
-                        if current_time - network.last_despawn_check >= 1.0:
-                            await self.despawn_old_ducks(network)
-                            network.last_despawn_check = current_time
                     
                     await asyncio.sleep(0.1)  # Small delay to prevent busy waiting
                     continue
