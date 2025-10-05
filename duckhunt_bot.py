@@ -186,8 +186,100 @@ class SQLBackend:
         
         return players
     
-    def clear_channel_stats(self, network_name, channel_name):
-        """Clear all channel stats for a specific network/channel"""
+    def backup_channel_stats(self, network_name, channel_name):
+        """Backup all channel stats for a specific network/channel before clearing"""
+        import uuid
+        from datetime import datetime
+        
+        # Generate unique backup ID with timestamp
+        backup_id = f"{network_name}_{channel_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
+        
+        # Get all channel stats to backup
+        select_query = """SELECT * FROM channel_stats 
+                          WHERE network_name = %s AND channel_name = %s"""
+        stats_to_backup = self.execute_query(select_query, (network_name, channel_name), fetch=True)
+        
+        if not stats_to_backup:
+            return backup_id, 0  # No data to backup
+        
+        # Insert into backup table
+        backup_count = 0
+        for stat in stats_to_backup:
+            # Remove fields that don't exist in backup table and add backup_id
+            backup_data = {k: v for k, v in stat.items() if k not in ['id', 'updated_at']}
+            backup_data['backup_id'] = backup_id
+            
+            # Build INSERT query
+            columns = ', '.join(backup_data.keys())
+            placeholders = ', '.join(['%s'] * len(backup_data))
+            insert_query = f"""INSERT INTO channel_stats_backup ({columns}) VALUES ({placeholders})"""
+            
+            if self.execute_query(insert_query, list(backup_data.values())):
+                backup_count += 1
+        
+        return backup_id, backup_count
+    
+    def restore_channel_stats(self, backup_id):
+        """Restore channel stats from a backup"""
+        # Get all backup records
+        select_query = """SELECT * FROM channel_stats_backup WHERE backup_id = %s"""
+        backup_stats = self.execute_query(select_query, (backup_id,), fetch=True)
+        
+        if not backup_stats:
+            return 0  # No backup found
+        
+        restored_count = 0
+        for stat in backup_stats:
+            # Remove backup-specific fields
+            restore_data = {k: v for k, v in stat.items() if k not in ['id', 'backup_id', 'created_at']}
+            
+            # Build INSERT query for channel_stats table (updated_at will be set automatically)
+            columns = ', '.join(restore_data.keys())
+            placeholders = ', '.join(['%s'] * len(restore_data))
+            insert_query = f"""INSERT INTO channel_stats ({columns}) VALUES ({placeholders}) 
+                              ON DUPLICATE KEY UPDATE 
+                              {', '.join([f"{k} = VALUES({k})" for k in restore_data.keys() if k not in ['player_id', 'network_name', 'channel_name']])}"""
+            
+            if self.execute_query(insert_query, list(restore_data.values())):
+                restored_count += 1
+        
+        return restored_count
+    
+    def list_backups(self, network_name=None, channel_name=None):
+        """List available backups, optionally filtered by network/channel"""
+        if network_name and channel_name:
+            query = """SELECT DISTINCT backup_id, network_name, channel_name, created_at, COUNT(*) as player_count
+                       FROM channel_stats_backup 
+                       WHERE network_name = %s AND channel_name = %s
+                       GROUP BY backup_id, network_name, channel_name, created_at
+                       ORDER BY created_at DESC"""
+            params = (network_name, channel_name)
+        elif network_name:
+            query = """SELECT DISTINCT backup_id, network_name, channel_name, created_at, COUNT(*) as player_count
+                       FROM channel_stats_backup 
+                       WHERE network_name = %s
+                       GROUP BY backup_id, network_name, channel_name, created_at
+                       ORDER BY created_at DESC"""
+            params = (network_name,)
+        else:
+            query = """SELECT DISTINCT backup_id, network_name, channel_name, created_at, COUNT(*) as player_count
+                       FROM channel_stats_backup 
+                       GROUP BY backup_id, network_name, channel_name, created_at
+                       ORDER BY created_at DESC
+                       LIMIT 20"""
+            params = ()
+        
+        return self.execute_query(query, params, fetch=True)
+    
+    def clear_channel_stats(self, network_name, channel_name, backup=True):
+        """Clear all channel stats for a specific network/channel, optionally with backup"""
+        backup_id = None
+        if backup:
+            # Create backup first
+            backup_id, backup_count = self.backup_channel_stats(network_name, channel_name)
+            if backup_count == 0:
+                return 0, None  # No data to clear
+        
         # First get count of affected players
         count_query = """SELECT COUNT(DISTINCT p.id) 
                          FROM players p 
@@ -201,7 +293,10 @@ class SQLBackend:
                           WHERE network_name = %s AND channel_name = %s"""
         success = self.execute_query(delete_query, (network_name, channel_name))
         
-        return affected_count if success else 0
+        if backup and success:
+            return affected_count, backup_id
+        else:
+            return affected_count if success else 0, None
     
     def close(self):
         """Close database connection"""
@@ -2303,12 +2398,17 @@ shop_extra_magazine = 400
             cleared_count = 0
             
             if self.data_storage == 'sql' and self.db_backend:
-                # SQL backend - delete channel stats from database
+                # SQL backend - backup and delete channel stats from database
                 network_name = network.name
                 channel_name = channel
                 
-                cleared_count = self.db_backend.clear_channel_stats(network_name, channel_name)
-                self.log_action(f"Cleared {cleared_count} player stats from SQL for {network_name}:{channel_name}")
+                cleared_count, backup_id = self.db_backend.clear_channel_stats(network_name, channel_name, backup=True)
+                if backup_id:
+                    self.log_action(f"Cleared {cleared_count} player stats from SQL for {network_name}:{channel_name} (backup: {backup_id})")
+                    await self.send_notice(network, user, f"Cleared all data for {channel} ({cleared_count} players affected). Backup ID: {backup_id}")
+                else:
+                    self.log_action(f"Cleared {cleared_count} player stats from SQL for {network_name}:{channel_name} (no data to backup)")
+                    await self.send_notice(network, user, f"Cleared all data for {channel} ({cleared_count} players affected)")
                 
             else:
                 # JSON backend - original logic
@@ -2359,6 +2459,55 @@ shop_extra_magazine = 400
             self.log_action(f"{user} cleared all data for {channel} ({cleared_count} players affected)")
             self.save_player_data()
             await self.send_notice(network, user, f"Cleared all data for {channel} ({cleared_count} players affected)")
+        elif command == "restore" and args:
+            backup_id = args[0]
+            self.log_action(f"Restore command received for backup {backup_id} from {user}")
+            
+            if self.data_storage == 'sql' and self.db_backend:
+                # SQL backend - restore from backup
+                restored_count = self.db_backend.restore_channel_stats(backup_id)
+                if restored_count > 0:
+                    self.log_action(f"Restored {restored_count} player stats from backup {backup_id}")
+                    await self.send_notice(network, user, f"Restored {restored_count} player stats from backup {backup_id}")
+                else:
+                    self.log_action(f"Failed to restore from backup {backup_id}")
+                    await self.send_notice(network, user, f"Backup {backup_id} not found or failed to restore")
+            else:
+                await self.send_notice(network, user, "Restore command only available with SQL backend")
+        elif command == "backups" and args:
+            channel = args[0] if args else None
+            self.log_action(f"Backups command received for {channel or 'all'} from {user}")
+            
+            if self.data_storage == 'sql' and self.db_backend:
+                # SQL backend - list backups
+                if channel:
+                    # List backups for specific channel
+                    backups = self.db_backend.list_backups(network.name, channel)
+                    if backups:
+                        backup_list = []
+                        for backup in backups[:5]:  # Show last 5 backups
+                            backup_time = backup['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+                            backup_list.append(f"{backup['backup_id']} ({backup_time}, {backup['player_count']} players)")
+                        
+                        message = f"Recent backups for {network.name}:{channel}:\n" + "\n".join(backup_list)
+                        await self.send_notice(network, user, message)
+                    else:
+                        await self.send_notice(network, user, f"No backups found for {network.name}:{channel}")
+                else:
+                    # List all recent backups
+                    backups = self.db_backend.list_backups()
+                    if backups:
+                        backup_list = []
+                        for backup in backups[:10]:  # Show last 10 backups
+                            backup_time = backup['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+                            backup_list.append(f"{backup['network_name']}:{backup['channel_name']} - {backup['backup_id']} ({backup_time}, {backup['player_count']} players)")
+                        
+                        message = "Recent backups:\n" + "\n".join(backup_list)
+                        await self.send_notice(network, user, message)
+                    else:
+                        await self.send_notice(network, user, "No backups found")
+            else:
+                await self.send_notice(network, user, "Backups command only available with SQL backend")
         elif command == "part" and args:
             channel = args[0]
             # Note: This is a global command, so we can't part from a specific network
@@ -2718,7 +2867,7 @@ shop_extra_magazine = 400
         
         self.log_action(f"Private command: {command}, args: {args}")
         
-        if command in ["add", "reload", "restart", "join", "part", "clear"]:
+        if command in ["add", "reload", "restart", "join", "part", "clear", "restore", "backups"]:
             self.log_action(f"Calling handle_owner_command for {command}")
             await self.handle_owner_command(user, command, args, network)
     
