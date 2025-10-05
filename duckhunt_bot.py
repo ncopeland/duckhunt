@@ -28,6 +28,14 @@ except ImportError:
     MYSQL_AVAILABLE = False
     print("Warning: mysql-connector-python not available. SQL backend disabled.")
 
+# Import language manager
+try:
+    from language_manager import LanguageManager
+    LANG_AVAILABLE = True
+except ImportError:
+    LANG_AVAILABLE = False
+    print("Warning: language_manager not available. Multilanguage support disabled.")
+
 class NetworkConnection:
     """Represents a connection to a single IRC network"""
     def __init__(self, name: str, config: dict):
@@ -434,8 +442,16 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build54"
+        self.version = "1.0_build55"
         self.ducks_lock = asyncio.Lock()
+        
+        # Multi-language support
+        if LANG_AVAILABLE:
+            self.lang = LanguageManager()
+            self.lang.load_user_preferences()
+            print(f"Multilanguage support enabled: {len(self.lang.languages)} languages available")
+        else:
+            self.lang = None
         
         # Multi-network support
         self.networks = {}  # {network_name: NetworkConnection}
@@ -1373,9 +1389,7 @@ shop_extra_magazine = 400
                         nxt = network.channel_next_spawn.get(channel)
                         seconds_left = int(nxt - now) if nxt else 60
                         seconds_left = max(0, seconds_left)
-                        minutes = seconds_left // 60
-                        secs = seconds_left % 60
-                        msg = f"[Duck Detector] A duck will spawn in {minutes}m{secs:02d}s in {channel}."
+                        msg = f"Your duck detector indicates the next duck will arrive any minute now... ({seconds_left}s remaining)"
                         self.log_action(f"Sending duck detector notice to {user}: {msg}")
                         await self.send_notice(network, user, msg)
                 network.channel_notice_sent[channel] = True
@@ -2099,9 +2113,19 @@ shop_extra_magazine = 400
                 elif item_id == 21:  # Ducks detector (shop: full 24h duration)
                     now = time.time()
                     duration = 24 * 3600
-                    current_until = float(channel_stats.get('ducks_detector_until', 0))
-                    channel_stats['ducks_detector_until'] = max(current_until, float(now + duration))
-                    await self.send_message(network, channel, self.pm(user, f"Ducks detector activated for 24h. You'll get a 60s pre-spawn notice. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                    if channel_stats.get('ducks_detector_until', 0) > now:
+                        await self.send_notice(network, user, "Ducks detector already active. Wait until it expires to buy again.")
+                        self.safe_xp_operation(channel_stats, 'add', cost)
+                    else:
+                        channel_stats['ducks_detector_until'] = float(now + duration)
+                        await self.send_message(network, channel, self.pm(user, f"Ducks detector activated for 24h. You'll get a 60s pre-spawn notice. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                        # Check if there's a spawn coming soon and send immediate notice if within 60s
+                        next_spawn = network.channel_next_spawn.get(channel)
+                        if next_spawn:
+                            seconds_until = int(next_spawn - now)
+                            if 0 < seconds_until <= 60:
+                                msg = f"Your duck detector indicates the next duck will arrive any minute now... ({seconds_until}s remaining)"
+                                await self.send_notice(network, user, msg)
                 elif item_id == 23:  # Extra Magazine: increase magazines_max (level 1-5), cost scales
                     current_level = channel_stats.get('mag_capacity_level', 0)
                     if current_level >= 5:
@@ -2135,8 +2159,46 @@ shop_extra_magazine = 400
     
     async def handle_duckhelp(self, user, channel, network: NetworkConnection):
         """Handle !duckhelp command"""
-        help_text = "Duck Hunt Commands: !bang, !bef, !reload, !shop, !duckstats, !topduck [duck], !lastduck, !duckhelp"
+        help_text = "Duck Hunt Commands: !bang, !bef, !reload, !shop, !duckstats, !topduck [duck], !lastduck, !duckhelp, !ducklang"
         await self.send_notice(network, user, help_text)
+    
+    async def handle_ducklang(self, user, channel, args, network: NetworkConnection):
+        """Handle !ducklang command to change user's language"""
+        if not self.lang:
+            await self.send_notice(network, user, "Multilanguage support is not available.")
+            return
+        
+        if not args:
+            # Show current language and available languages
+            current_lang = self.lang.get_user_language(user)
+            lang_info = self.lang.languages.get(current_lang, {})
+            lang_name = lang_info.get('language_name', current_lang)
+            
+            available = self.lang.get_available_languages()
+            lang_list = ", ".join([f"{code}({name})" for code, name in sorted(available.items())])
+            
+            await self.send_notice(network, user, f"Your current language is: {lang_name} ({current_lang})")
+            await self.send_notice(network, user, f"Available languages: {lang_list}")
+            await self.send_notice(network, user, "Usage: !ducklang <code> (e.g., !ducklang es for Spanish)")
+        else:
+            # Change language
+            new_lang = args[0].lower()
+            if self.lang.set_user_language(user, new_lang):
+                lang_info = self.lang.languages.get(new_lang, {})
+                lang_name = lang_info.get('language_name', new_lang)
+                native_name = lang_info.get('native_name', '')
+                
+                msg = f"Language changed to: {lang_name}"
+                if native_name:
+                    msg += f" ({native_name})"
+                msg += f" [{new_lang}]"
+                
+                await self.send_message(network, channel, self.pm(user, msg))
+                self.lang.save_user_preferences()
+            else:
+                available = self.lang.get_available_languages()
+                lang_list = ", ".join([f"{code}" for code in sorted(available.keys())])
+                await self.send_notice(network, user, f"Invalid language code '{new_lang}'. Available: {lang_list}")
     
     async def handle_lastduck(self, user, channel, network: NetworkConnection):
         """Handle !lastduck command"""
@@ -2586,6 +2648,8 @@ shop_extra_magazine = 400
             await self.handle_lastduck(user, channel, network)
         elif command == "duckhelp":
             await self.handle_duckhelp(user, channel, network)
+        elif command == "ducklang":
+            await self.handle_ducklang(user, channel, args, network)
         elif command == "nextduck":
             # Owner-only, invoked in channel
             if not self.is_owner(user, network):
