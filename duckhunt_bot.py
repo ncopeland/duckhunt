@@ -2975,6 +2975,181 @@ shop_extra_magazine = 400
         elif network.sock:  # Non-SSL connection
             network.sock.close()
 
+    async def handle_topduck(self, user, channel, args, network):
+        """Handle !topduck command"""
+        try:
+            # Get all players for this network:channel
+            channel_key = f"{network.name}:{channel}"
+            
+            if self.data_storage == 'sql' and self.db_backend:
+                # SQL backend - get players from database
+                query = """SELECT p.username, cs.xp, cs.ducks_shot, cs.golden_ducks
+                           FROM players p 
+                           JOIN channel_stats cs ON p.id = cs.player_id 
+                           WHERE cs.network_name = %s AND cs.channel_name = %s 
+                           ORDER BY cs.xp DESC 
+                           LIMIT 10"""
+                players = self.db_backend.execute_query(query, (network.name, channel), fetch=True)
+                
+                if not players:
+                    await self.send_message(network, channel, "The scoreboard is empty. There are no top ducks.")
+                    return
+                
+                # Build response
+                response_parts = []
+                for i, player in enumerate(players, 1):
+                    username = player['username']
+                    xp = player['xp']
+                    ducks = player['ducks_shot']
+                    golden = player['golden_ducks']
+                    
+                    if i == 1:
+                        response_parts.append(f"{username} with {xp} total xp")
+                    else:
+                        response_parts.append(f"{username} with {xp} total xp")
+                
+                response = f"The top duck(s) in {channel} by total xp are: " + " | ".join(response_parts)
+                
+            else:
+                # JSON backend - get players from memory
+                players_with_stats = []
+                for player_name, player_data in self.players.items():
+                    stats_map = player_data.get('channel_stats', {})
+                    if channel_key in stats_map:
+                        stats = stats_map[channel_key]
+                        players_with_stats.append({
+                            'name': player_name,
+                            'xp': stats.get('xp', 0),
+                            'ducks_shot': stats.get('ducks_shot', 0),
+                            'golden_ducks': stats.get('golden_ducks', 0)
+                        })
+                
+                if not players_with_stats:
+                    await self.send_message(network, channel, "The scoreboard is empty. There are no top ducks.")
+                    return
+                
+                # Sort by XP
+                players_with_stats.sort(key=lambda x: x['xp'], reverse=True)
+                
+                # Build response
+                response_parts = []
+                for i, player in enumerate(players_with_stats[:10], 1):
+                    username = player['name']
+                    xp = player['xp']
+                    
+                    if i == 1:
+                        response_parts.append(f"{username} with {xp} total xp")
+                    else:
+                        response_parts.append(f"{username} with {xp} total xp")
+                
+                response = f"The top duck(s) in {channel} by total xp are: " + " | ".join(response_parts)
+            
+            await self.send_message(network, channel, response)
+            
+        except Exception as e:
+            self.log_action(f"Error in handle_topduck: {e}")
+            await self.send_message(network, channel, "Error retrieving top ducks.")
+
+    async def handle_duckstats(self, user, channel, args, network):
+        """Handle !duckstats command"""
+        try:
+            target_user = args[0] if args else user
+            channel_key = f"{network.name}:{channel}"
+            
+            # Get player stats
+            if self.data_storage == 'sql' and self.db_backend:
+                # SQL backend
+                player_id = self.db_backend.get_player_id(target_user)
+                stats = self.db_backend.get_channel_stats(player_id, network.name, channel)
+                
+                if not stats or stats.get('xp', 0) == 0:
+                    await self.send_message(network, channel, f"No stats found for {target_user} in {channel}")
+                    return
+                
+                # Apply level bonuses
+                stats = self.apply_level_bonuses(stats)
+                
+            else:
+                # JSON backend
+                if target_user not in self.players:
+                    await self.send_message(network, channel, f"No stats found for {target_user} in {channel}")
+                    return
+                
+                player_data = self.players[target_user]
+                stats_map = player_data.get('channel_stats', {})
+                
+                if channel_key not in stats_map:
+                    await self.send_message(network, channel, f"No stats found for {target_user} in {channel}")
+                    return
+                
+                stats = stats_map[channel_key]
+                stats = self.apply_level_bonuses(stats)
+            
+            # Build response
+            xp = stats.get('xp', 0)
+            level = self.get_level_from_xp(xp)
+            ducks_shot = stats.get('ducks_shot', 0)
+            golden_ducks = stats.get('golden_ducks', 0)
+            misses = stats.get('misses', 0)
+            accuracy = (ducks_shot / (ducks_shot + misses) * 100) if (ducks_shot + misses) > 0 else 0
+            best_time = stats.get('best_time', 0)
+            avg_reaction = stats.get('total_reaction_time', 0) / max(ducks_shot, 1)
+            
+            ammo = stats.get('ammo', 0)
+            magazines = stats.get('magazines', 0)
+            mag_capacity = stats.get('magazine_capacity', 6)
+            magazines_max = stats.get('magazines_max', 2)
+            
+            response = f"Hunting stats for {target_user} in {channel} : "
+            response += f"[Weapon] ammo: {ammo}/{mag_capacity} | mag.: {magazines}/{magazines_max} | jammed: {'yes' if stats.get('jammed', False) else 'no'} | confisc.: {'yes' if stats.get('confiscated', False) else 'no'} "
+            response += f"[Profile] {xp} xp | lvl {level} | accuracy: {accuracy:.0f}% | karma: {self.get_karma(stats):.2f}% good hunter "
+            response += f"[Channel Stats] {ducks_shot} ducks (incl. {golden_ducks} golden) | best time: {best_time:.3f}s | avg react: {avg_reaction:.3f}s"
+            
+            await self.send_message(network, channel, response)
+            
+        except Exception as e:
+            self.log_action(f"Error in handle_duckstats: {e}")
+            await self.send_message(network, channel, "Error retrieving stats.")
+
+    async def handle_shop(self, user, channel, args, network):
+        """Handle !shop command"""
+        try:
+            if not args:
+                # Show shop menu
+                shop_items = [
+                    "1. Extra bullet (10 XP)",
+                    "2. Extra magazine (20 XP)", 
+                    "3. AP ammo (15 XP)",
+                    "4. Grease (25 XP)",
+                    "5. Repurchase confiscated gun (40 XP)",
+                    "6. Sight (30 XP)",
+                    "7. Silencer (35 XP)",
+                    "8. Trigger lock (15 XP)",
+                    "9. Sunglasses (20 XP)",
+                    "10. Four-leaf clover (13 XP)"
+                ]
+                
+                response = "Shop items: " + " | ".join(shop_items)
+                await self.send_message(network, channel, response)
+                return
+            
+            item_num = args[0]
+            if not item_num.isdigit():
+                await self.send_message(network, channel, "Invalid item number.")
+                return
+            
+            item_num = int(item_num)
+            if item_num < 1 or item_num > 10:
+                await self.send_message(network, channel, "Invalid item number. Use !shop to see available items.")
+                return
+            
+            # Process purchase
+            await self.process_shop_purchase(user, channel, item_num, network)
+            
+        except Exception as e:
+            self.log_action(f"Error in handle_shop: {e}")
+            await self.send_message(network, channel, "Error processing shop purchase.")
+
     async def main_loop(self, network):
         """Main message processing loop for a network"""
         while True:
