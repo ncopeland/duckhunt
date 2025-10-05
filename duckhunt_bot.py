@@ -20,6 +20,13 @@ import os
 import configparser
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+try:
+    import mysql.connector
+    from mysql.connector import Error
+    MYSQL_AVAILABLE = True
+except ImportError:
+    MYSQL_AVAILABLE = False
+    print("Warning: mysql-connector-python not available. SQL backend disabled.")
 
 class NetworkConnection:
     """Represents a connection to a single IRC network"""
@@ -40,14 +47,236 @@ class NetworkConnection:
         self.channel_last_spawn = {}
         self.last_despawn_check = 0
 
+class SQLBackend:
+    """SQL database backend for player data storage"""
+    
+    def __init__(self, host, port, database, user, password):
+        if not MYSQL_AVAILABLE:
+            raise ImportError("mysql-connector-python not available")
+        
+        self.connection = None
+        self.host = host
+        self.port = port
+        self.database = database
+        self.user = user
+        self.password = password
+        self.connect()
+    
+    def connect(self):
+        """Establish connection to MariaDB/MySQL"""
+        try:
+            self.connection = mysql.connector.connect(
+                host=self.host,
+                port=self.port,
+                database=self.database,
+                user=self.user,
+                password=self.password,
+                autocommit=True
+            )
+            if self.connection.is_connected():
+                print(f"Connected to MariaDB database: {self.database}")
+        except Error as e:
+            print(f"Error connecting to MariaDB: {e}")
+            self.connection = None
+    
+    def reconnect(self):
+        """Reconnect if connection is lost"""
+        if self.connection and self.connection.is_connected():
+            return
+        self.connect()
+    
+    def execute_query(self, query, params=None, fetch=False):
+        """Execute a SQL query safely"""
+        try:
+            if not self.connection or not self.connection.is_connected():
+                self.reconnect()
+                if not self.connection:
+                    return None
+            
+            cursor = self.connection.cursor(dictionary=True)
+            cursor.execute(query, params)
+            
+            if fetch:
+                result = cursor.fetchall()
+                cursor.close()
+                return result
+            else:
+                cursor.close()
+                return True
+        except Error as e:
+            print(f"SQL Error: {e}")
+            return None
+    
+    def get_player_id(self, username):
+        """Get or create player ID"""
+        query = "SELECT id FROM players WHERE username = %s"
+        result = self.execute_query(query, (username,), fetch=True)
+        
+        if result:
+            return result[0]['id']
+        else:
+            # Create new player
+            query = "INSERT INTO players (username) VALUES (%s)"
+            if self.execute_query(query, (username,)):
+                return self.get_player_id(username)
+        return None
+    
+    def get_channel_stats(self, username, network_name, channel_name):
+        """Get channel stats for a player"""
+        player_id = self.get_player_id(username)
+        if not player_id:
+            return None
+        
+        query = """SELECT * FROM channel_stats 
+                   WHERE player_id = %s AND network_name = %s AND channel_name = %s"""
+        result = self.execute_query(query, (player_id, network_name, channel_name), fetch=True)
+        
+        if result:
+            return result[0]
+        else:
+            # Create new channel stats
+            query = """INSERT INTO channel_stats 
+                       (player_id, network_name, channel_name) 
+                       VALUES (%s, %s, %s)"""
+            if self.execute_query(query, (player_id, network_name, channel_name)):
+                return self.get_channel_stats(username, network_name, channel_name)
+        return None
+    
+    def update_channel_stats(self, username, network_name, channel_name, stats_dict):
+        """Update channel stats for a player"""
+        player_id = self.get_player_id(username)
+        if not player_id:
+            return False
+        
+        # Build dynamic update query
+        set_clauses = []
+        params = []
+        
+        for key, value in stats_dict.items():
+            set_clauses.append(f"{key} = %s")
+            params.append(value)
+        
+        params.extend([player_id, network_name, channel_name])
+        
+        query = f"""UPDATE channel_stats 
+                    SET {', '.join(set_clauses)}
+                    WHERE player_id = %s AND network_name = %s AND channel_name = %s"""
+        
+        return self.execute_query(query, params)
+    
+    def get_all_players(self):
+        """Get all players with their channel stats"""
+        query = """SELECT p.username, cs.network_name, cs.channel_name, cs.* 
+                   FROM players p 
+                   LEFT JOIN channel_stats cs ON p.id = cs.player_id"""
+        result = self.execute_query(query, fetch=True)
+        
+        players = {}
+        for row in result:
+            username = row['username']
+            if username not in players:
+                players[username] = {'channel_stats': {}}
+            
+            if row['network_name'] and row['channel_name']:
+                channel_key = f"{row['network_name']}:{row['channel_name']}"
+                # Convert row to dict, excluding player-specific fields
+                stats = {k: v for k, v in row.items() 
+                        if k not in ['id', 'username', 'player_id', 'network_name', 'channel_name', 'created_at', 'updated_at']}
+                players[username]['channel_stats'][channel_key] = stats
+        
+        return players
+    
+    def close(self):
+        """Close database connection"""
+        if self.connection and self.connection.is_connected():
+            self.connection.close()
+
+def migrate_json_to_sql(json_file="duckhunt.data", sql_config=None):
+    """Migrate existing JSON data to SQL database"""
+    if not MYSQL_AVAILABLE:
+        print("MySQL connector not available for migration")
+        return False
+    
+    if not os.path.exists(json_file):
+        print(f"JSON file {json_file} not found")
+        return False
+    
+    try:
+        # Load JSON data
+        with open(json_file, 'r') as f:
+            json_data = json.load(f)
+        
+        # Initialize SQL backend
+        if sql_config is None:
+            sql_config = {
+                'host': 'localhost',
+                'port': 3306,
+                'database': 'duckhunt',
+                'user': 'duckhunt',
+                'password': 'duckhunt123'
+            }
+        
+        db = SQLBackend(**sql_config)
+        
+        # Migrate each player's data
+        migrated_count = 0
+        for username, player_data in json_data.items():
+            channel_stats = player_data.get('channel_stats', {})
+            
+            for channel_key, stats in channel_stats.items():
+                if ':' in channel_key:
+                    network_name, channel_name = channel_key.split(':', 1)
+                else:
+                    # Legacy format - assume main network
+                    network_name = 'main'
+                    channel_name = channel_key
+                
+                # Update stats in database
+                if db.update_channel_stats(username, network_name, channel_name, stats):
+                    migrated_count += 1
+        
+        print(f"Migration completed: {migrated_count} channel stats migrated")
+        db.close()
+        return True
+        
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        return False
+
 class DuckHuntBot:
     def __init__(self, config_file="duckhunt.conf"):
         self.config = self.load_config(config_file)
-        self.players = self.load_player_data()
+        self.data_storage = self.config.get('DEFAULT', 'data_storage', fallback='json')
+        
+        # Initialize data backend
+        if self.data_storage == 'sql' and MYSQL_AVAILABLE:
+            try:
+                sql_config = {
+                    'host': self.config.get('DEFAULT', 'sql_host', fallback='localhost'),
+                    'port': self.config.getint('DEFAULT', 'sql_port', fallback=3306),
+                    'database': self.config.get('DEFAULT', 'sql_database', fallback='duckhunt'),
+                    'user': self.config.get('DEFAULT', 'sql_user', fallback='duckhunt'),
+                    'password': self.config.get('DEFAULT', 'sql_password', fallback='duckhunt123')
+                }
+                self.db_backend = SQLBackend(**sql_config)
+                self.players = self.db_backend.get_all_players()
+                print("Using SQL backend for data storage")
+            except Exception as e:
+                print(f"Failed to initialize SQL backend: {e}")
+                print("Falling back to JSON backend")
+                self.data_storage = 'json'
+                self.db_backend = None
+                self.players = self.load_player_data()
+        else:
+            self.db_backend = None
+            self.players = self.load_player_data()
+            if self.data_storage == 'sql':
+                print("SQL backend requested but not available. Using JSON backend.")
+        
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build52"
+        self.version = "1.0_build53"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-network support
@@ -642,6 +871,18 @@ shop_extra_magazine = 400
             stats['ammo'] = stats.get('magazine_capacity', 10)
             stats['magazines'] = stats.get('magazines_max', 2)
         return stats
+
+    def update_stats_in_backend(self, user, channel, network, stats_dict):
+        """Update stats in the appropriate backend (SQL or JSON)"""
+        if self.data_storage == 'sql' and self.db_backend:
+            # Update in SQL backend
+            network_name = network.name if network else 'unknown'
+            channel_name = channel
+            return self.db_backend.update_channel_stats(user, network_name, channel_name, stats_dict)
+        else:
+            # JSON backend - stats are already updated in memory, just save to file
+            self.save_player_data()
+            return True
 
     def compute_accuracy(self, channel_stats, mode: str) -> float:
         """Compute hit chance based on level and temporary buffs.

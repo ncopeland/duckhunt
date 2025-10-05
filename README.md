@@ -1,6 +1,21 @@
-# Duck Hunt IRC Bot v1.0_build52
+# Duck Hunt IRC Bot v1.0_build53
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, and multi-network support. Players shoot ducks with `!bang` when they appear!
+
+## Data Storage Options
+
+The bot supports two data storage backends:
+
+### JSON Backend (Default)
+- Stores player data in `duckhunt.data` file
+- Simple setup, no additional dependencies
+- Good for small to medium deployments
+
+### SQL Backend (MariaDB/MySQL)
+- Stores player data in MariaDB/MySQL database
+- Better performance and scalability
+- Supports concurrent access
+- Requires `mysql-connector-python` package
 
 ## How to Play
 
@@ -31,6 +46,42 @@ An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop sy
 - `!join <channel>` - Join a new channel (owner only)
 - `!rearm <player>` - Give a player a gun
 - `!disarm <player>` - Confiscate a player's gun
+
+## SQL Backend Setup
+
+### Prerequisites
+1. Install MariaDB/MySQL server
+2. Install Python MySQL connector:
+   ```bash
+   pip3 install mysql-connector-python --break-system-packages
+   ```
+
+### Database Setup
+1. Run the database setup script:
+   ```bash
+   python3 setup_database.py
+   ```
+2. Enter your MySQL root password when prompted
+3. The script will create the `duckhunt` database and user
+
+### Data Migration
+1. If you have existing JSON data, migrate it to SQL:
+   ```bash
+   python3 migrate_data.py
+   ```
+2. Edit `duckhunt.conf` and change `data_storage = sql`
+
+### Configuration
+Add these settings to `duckhunt.conf`:
+```ini
+[DEFAULT]
+data_storage = sql
+sql_host = localhost
+sql_port = 3306
+sql_database = duckhunt
+sql_user = duckhunt
+sql_password = duckhunt123
+```
 
 ## Running the Bot
 
