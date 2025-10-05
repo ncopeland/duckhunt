@@ -2,10 +2,70 @@
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, and multi-network support. Players shoot ducks with `!bang` when they appear!
 
-## What's New in Build 54
+## Changelog
+
+### v1.0_build54
 - **Rate Limiting**: Added 1 message per second rate limiting per network to prevent flood issues
 - **Code Cleanup**: Removed temporary migration and debug scripts from repository
 - **Bug Fixes**: Fixed various SQL backend issues with Decimal/float conversions
+- Removed duckhunt.data.backup from repo
+
+### v1.0_build53
+- Implement lossless backup/restore system for clear command
+- Fix clear command for SQL backend and improve network connectivity
+- Add MariaDB/MySQL SQL backend support
+- Add missing handler methods for commands
+
+### v1.0_build52
+- Fix SSL connections for networks requiring secure connections
+- Add IPv6 support for servers with IPv6-only interfaces
+- Fix magazine capacity upgrade logic (no longer magically adds ammo)
+- Replace all "clip" terminology with proper "magazine" terminology
+- Fix explosive ammo to decrement on all shots, not just golden ducks
+- Rename "infrared detector" to "trigger lock" throughout codebase
+- Fix trigger lock purchase confirmation and message visibility
+- Fix clear command counting bug and recover lost player data
+- Fix data migration to handle legacy field names
+- Fix duplicate channel name conflicts across networks with network-prefixed keys
+- Fix duck counting logic - regular and golden ducks each count as one
+- Add `!topduck duck` command to sort by ducks killed instead of XP
+- Enhance `!duckstats` with network/channel display, XP breakdown, and items section
+
+### v1.0_build51
+- Fix golden duck survival message colorization
+- Fix duck kill message spacing (remove extra space after channel name)
+
+### v1.0_build50
+- Fix promotion/demotion message spacing and colorization
+- Fix "you missed" message spacing and red colorization
+- Fix "empty magazine" message - colorize *CLICK* red
+- Fix "no magazines left" message content
+- Fix "you reload" message - colorize *CLACK CLACK* red
+- Fix "gun doesn't need reload" message - remove grey colorization
+- Ensure shop XP penalties are consistently red
+- Fix sunglasses purchase logic to prevent duplicate purchases
+- Add life remaining display to golden duck hit messages
+- Change `!bang` to show remaining duck health instead of damage dealt
+- Remove green colorization from shop purchase messages (AP ammo, grease, sight)
+- Improve trigger locked message formatting and colorization
+
+### v1.0_build49-48
+- Add `!part` command for bot owner to leave channels with proper cleanup
+- Fix befriend command message formatting and crashes
+- Remove white colorization from various messages
+- Add debug logging to duck detector notification system
+
+### Earlier Builds (v1.0_build47 and below)
+- Fix duck despawn functionality to properly clean up after 700 seconds
+- Fix spawn scheduling to only trigger on appropriate events
+- Add MOTD handling for proper bot registration
+- Multi-network support with network-specific configurations
+- Full shop system with 22+ items
+- Karma and XP tracking system
+- Level progression with bonuses
+- Golden duck mechanics with multi-hit system
+- Magazine and ammunition management
+- Various items: detector, trigger lock, silencer, insurance, etc.
 
 ## Data Storage Options
 
