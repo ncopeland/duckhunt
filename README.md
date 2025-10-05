@@ -1,8 +1,15 @@
-# Duck Hunt IRC Bot v1.0_build55
+# Duck Hunt IRC Bot v1.0_build56
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build56
+- **Critical Bug Fix**: Fixed magazine/ammo stats not saving to SQL database
+  - All `!bang`, `!reload`, `!bef`, `!shop`, and admin commands now properly persist state changes to database
+  - Magazine count in `!duckstats` now correctly reflects actual remaining magazines
+  - Ammo consumption and reload actions are now properly saved
+  - Replaced all `save_player_data()` calls with explicit SQL `update_channel_stats()` when using SQL backend
 
 ### v1.0_build55
 - **Multilanguage Foundation**: Added complete multilanguage support system

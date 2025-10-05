@@ -442,7 +442,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build55"
+        self.version = "1.0_build56"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-language support
@@ -1492,7 +1492,10 @@ shop_extra_magazine = 400
                     remaining_uses = channel_stats.get('infrared_uses', 0)
                     remaining_color = 'red' if remaining_uses == 0 else 'green'
                     await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLICK*', 'red', bold=True)} Trigger locked. {self.colorize(f'[{remaining_uses} remaining]', remaining_color)}"))
-                    self.save_player_data()
+                    if self.data_storage == 'sql' and self.db_backend:
+                        self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                    else:
+                        self.save_player_data()
                     return
                 # No duck present - apply wild fire penalties and confiscation
                 miss_pen = -random.randint(1, 5)  # Random penalty (-1 to -5) on miss
@@ -1538,7 +1541,10 @@ shop_extra_magazine = 400
                     else:
                         await self.send_message(network, channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ''}"))
                 await self.check_level_change(user, channel, channel_stats, prev_xp, network)
-                self.save_player_data()
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                else:
+                    self.save_player_data()
                 return
             
             # Target the active duck in this channel
@@ -1561,7 +1567,10 @@ shop_extra_magazine = 400
                 magazine_capacity = channel_stats.get('magazine_capacity', 10)
                 mags_max = channel_stats.get('magazines_max', 2)
                 await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red')} Your gun is {self.colorize('JAMMED', 'red', bold=True)} you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{magazine_capacity} | Magazines : {channel_stats['magazines']}/{mags_max}"))
-                self.save_player_data()
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                else:
+                    self.save_player_data()
                 return
 
             # Shoot at duck (consume ammo on non-jam)
@@ -1617,7 +1626,10 @@ shop_extra_magazine = 400
                     else:
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('ACCIDENT', 'red', bold=True)}     {self.colorize('Your bullet ricochets into', 'red')} {victim}! {self.colorize(f'[accident: {acc_pen} xp]', 'red')}{self.colorize(' [INSURED: no confiscation]', 'green') if insured else self.colorize(' [GUN CONFISCATED: accident]', 'red', bold=True)}"))
                 await self.check_level_change(user, channel, channel_stats, prev_xp, network)
-                self.save_player_data()
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                else:
+                    self.save_player_data()
                 return
 
             # Compute damage
@@ -1714,7 +1726,11 @@ shop_extra_magazine = 400
         if duck_killed and random.random() < 0.10:
             await self.apply_weighted_loot(user, channel, channel_stats, network)
         
-        self.save_player_data()
+        # Save changes to database
+        if self.data_storage == 'sql' and self.db_backend:
+            self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+        else:
+            self.save_player_data()
     
     async def handle_bef(self, user, channel, network: NetworkConnection):
         """Handle !bef (befriend) command"""
@@ -1734,7 +1750,10 @@ shop_extra_magazine = 400
                 penalty = -random.randint(1, 10)
                 self.safe_xp_operation(channel_stats, 'subtract', -penalty)
                 await self.send_message(network, channel, self.pm(user, f"There are no ducks to befriend. {self.colorize(f'[{penalty} XP]', 'red')}"))
-                self.save_player_data()
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                else:
+                    self.save_player_data()
                 return
             
             # Get the active duck
@@ -1752,7 +1771,10 @@ shop_extra_magazine = 400
                 channel_stats['misses'] += 1
                 self.safe_xp_operation(channel_stats, 'subtract', -penalty)
                 await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'red', bold=True)} The duck seems distracted. Try again. {self.colorize(f'[{penalty} XP]', 'red')}"))
-                self.save_player_data()
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                else:
+                    self.save_player_data()
                 return
 
             # Compute befriend effectiveness
@@ -1809,7 +1831,11 @@ shop_extra_magazine = 400
             response = f"{self.colorize('FRIEND', 'red', bold=True)} You comfort the duck. {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('friend', 'red')} {remaining}]"
             await self.send_message(network, channel, self.pm(user, response))
         
-        self.save_player_data()
+        # Save changes to database
+        if self.data_storage == 'sql' and self.db_backend:
+            self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+        else:
+            self.save_player_data()
     
     async def handle_reload(self, user, channel, network: NetworkConnection):
         """Handle !reload command"""
@@ -1848,7 +1874,11 @@ shop_extra_magazine = 400
             mags_max = channel_stats.get('magazines_max', 2)
             await self.send_message(network, channel, self.pm(user, f"Your gun doesn't need to be reloaded. | Ammo: {channel_stats['ammo']}/{magazine_capacity} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         
-        self.save_player_data()
+        # Save changes to database
+        if self.data_storage == 'sql' and self.db_backend:
+            self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+        else:
+            self.save_player_data()
     
     async def handle_shop(self, user, channel, args, network: NetworkConnection):
         """Handle !shop command"""
@@ -2150,8 +2180,8 @@ shop_extra_magazine = 400
                 # Update SQL database with the changes
                 if self.data_storage == 'sql' and self.db_backend:
                     self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
-                
-                self.save_player_data()
+                else:
+                    self.save_player_data()
                 
             except ValueError:
                 await self.send_notice(network, user, "Invalid item ID.")
@@ -2298,7 +2328,10 @@ shop_extra_magazine = 400
                 channel_stats['ammo'] = magazine_capacity
                 channel_stats['magazines'] = mags_max
                 await self.send_message(network, channel, f"{target} has been rearmed.")
-                self.save_player_data()
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(target, network.name, channel, channel_stats)
+                else:
+                    self.save_player_data()
         elif command == "disarm" and args:
             target = args[0]
             if target in self.players:
@@ -2307,7 +2340,10 @@ shop_extra_magazine = 400
                 # Optionally also empty ammo
                 channel_stats['ammo'] = 0
                 await self.send_message(network, channel, f"{target} has been disarmed.")
-                self.save_player_data()
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(target, network.name, channel, channel_stats)
+                else:
+                    self.save_player_data()
     
     async def handle_owner_command(self, user, command, args, network: NetworkConnection):
         """Handle owner commands via PRIVMSG"""
@@ -2333,7 +2369,10 @@ shop_extra_magazine = 400
                 channel_stats['confiscated'] = True
                 channel_stats['ammo'] = 0
                 await self.send_notice(network, user, f"{target} has been disarmed in {channel}.")
-                self.save_player_data()
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(target, network.name, channel, channel_stats)
+                else:
+                    self.save_player_data()
         elif command == "reload":
             self.load_config("duckhunt.conf")
             # Note: This is a global command, so we can't send to a specific network
@@ -2833,7 +2872,11 @@ shop_extra_magazine = 400
             junk = random.choice(junk_items)
             await say(f"By searching the bushes, you find a {junk}. It's worthless.")
 
-        self.save_player_data()
+        # Save changes to database
+        if self.data_storage == 'sql' and self.db_backend:
+            self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+        else:
+            self.save_player_data()
     
     async def handle_private_message(self, user, message, network: NetworkConnection):
         """Handle private message"""
