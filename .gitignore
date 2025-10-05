@@ -10,10 +10,28 @@ env.bak/
 venv.bak/
 .env
 .DS_Store
+
+# Bot runtime files
 *.log
+*.out
+duckhunt.pid
+duckhunt.data
+duckhunt.data.backup
+duckhunt.conf
+duckhunt.conf.backup
+
+# Migration and debug scripts
+migrate_data.py
+setup_database.py
+quick_setup.py
+create_backup_table.py
+debug_backup.py
+schema.sql
+setup_all.sh
+setup_no_sudo.sh
+SETUP_INSTRUCTIONS.txt
+test_*.py
+
+# Documentation (keep in repo but ignore AI instructions)
 duckhunt_ai_instructions.md
 message_classification.csv
-duckhunt.data
-duckhunt.conf
-duckhunt.log
-duckhunt.pid

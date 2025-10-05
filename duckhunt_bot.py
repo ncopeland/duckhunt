@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build52
+Duck Hunt IRC Bot v1.0_build54
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -148,13 +148,30 @@ class SQLBackend:
         if not player_id:
             return False
         
-        # Build dynamic update query
+        # Valid fields that exist in the SQL schema
+        valid_fields = {
+            'xp', 'ducks_shot', 'golden_ducks', 'misses', 'accidents', 'best_time',
+            'total_reaction_time', 'shots_fired', 'last_duck_time', 'wild_fires',
+            'confiscated', 'jammed', 'sabotaged', 'ammo', 'magazines', 'ap_shots',
+            'explosive_shots', 'bread_uses', 'befriended_ducks', 'trigger_lock_until',
+            'trigger_lock_uses', 'grease_until', 'silencer_until', 'sunglasses_until',
+            'ducks_detector_until', 'mirror_until', 'sand_until', 'soaked_until',
+            'life_insurance_until', 'liability_insurance_until', 'mag_upgrade_level',
+            'mag_capacity_level', 'magazine_capacity', 'magazines_max', 'infrared_until',
+            'infrared_uses', 'clover_until', 'clover_bonus', 'brush_until', 'sight_next_shot'
+        }
+        
+        # Build dynamic update query - only include valid fields
         set_clauses = []
         params = []
         
         for key, value in stats_dict.items():
-            set_clauses.append(f"{key} = %s")
-            params.append(value)
+            if key in valid_fields:
+                set_clauses.append(f"{key} = %s")
+                params.append(value)
+        
+        if not set_clauses:
+            return True  # Nothing to update
         
         params.extend([player_id, network_name, channel_name])
         
@@ -343,8 +360,37 @@ def migrate_json_to_sql(json_file="duckhunt.data", sql_config=None):
                     network_name = 'main'
                     channel_name = channel_key
                 
+                # Filter to only include fields that exist in SQL schema
+                valid_fields = {
+                    'xp', 'ducks_shot', 'golden_ducks', 'misses', 'accidents', 'best_time',
+                    'total_reaction_time', 'shots_fired', 'last_duck_time', 'wild_fires',
+                    'confiscated', 'jammed', 'sabotaged', 'ammo', 'magazines', 'ap_shots',
+                    'explosive_shots', 'bread_uses', 'befriended_ducks', 'trigger_lock_until',
+                    'trigger_lock_uses', 'grease_until', 'silencer_until', 'sunglasses_until',
+                    'ducks_detector_until', 'mirror_until', 'sand_until', 'soaked_until',
+                    'life_insurance_until', 'liability_insurance_until', 'mag_upgrade_level',
+                    'mag_capacity_level', 'magazine_capacity', 'magazines_max'
+                }
+                
+                filtered_stats = {}
+                for key, value in stats.items():
+                    if key in valid_fields:
+                        # Convert Unix timestamp to MySQL TIMESTAMP for last_duck_time
+                        if key == 'last_duck_time' and isinstance(value, (int, float)):
+                            from datetime import datetime
+                            try:
+                                filtered_stats[key] = datetime.fromtimestamp(value).strftime('%Y-%m-%d %H:%M:%S')
+                            except (ValueError, OSError):
+                                # Skip invalid timestamps
+                                continue
+                        else:
+                            filtered_stats[key] = value
+                
+                # Create channel stats record if it doesn't exist
+                existing_stats = db.get_channel_stats(username, network_name, channel_name)
+                
                 # Update stats in database
-                if db.update_channel_stats(username, network_name, channel_name, stats):
+                if db.update_channel_stats(username, network_name, channel_name, filtered_stats):
                     migrated_count += 1
         
         print(f"Migration completed: {migrated_count} channel stats migrated")
@@ -388,7 +434,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build53"
+        self.version = "1.0_build54"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-network support
@@ -614,10 +660,29 @@ shop_extra_magazine = 400
                 return {}
         return {}
     
+    def safe_xp_operation(self, channel_stats, operation, value):
+        """Safely perform XP arithmetic operations with Decimal conversion"""
+        current_xp = float(channel_stats['xp'])
+        if operation == 'add':
+            channel_stats['xp'] = current_xp + value
+        elif operation == 'subtract':
+            channel_stats['xp'] = max(0, current_xp - value)
+        elif operation == 'set':
+            channel_stats['xp'] = max(0, value)
+        else:
+            channel_stats['xp'] = current_xp
+        return channel_stats['xp']
+
     def save_player_data(self):
-        """Save player data to file"""
-        with open('duckhunt.data', 'w') as f:
-            json.dump(self.players, f, indent=2)
+        """Save player data to file or SQL backend"""
+        if self.data_storage == 'sql' and self.db_backend:
+            # SQL backend - no need to save player data as it's automatically saved
+            # Active ducks and timing are handled separately
+            pass
+        else:
+            # JSON backend - save all player data
+            with open('duckhunt.data', 'w') as f:
+                json.dump(self.players, f, indent=2)
     
     def log_message(self, msg_type, message):
         """Log message with timestamp"""
@@ -662,7 +727,14 @@ shop_extra_magazine = 400
             print(log_entry.strip())
     
     async def send_network(self, network: NetworkConnection, message):
-        """Send message to IRC server for a specific network"""
+        """Send message to IRC server for a specific network with rate limiting"""
+        # Rate limiting: 1 message per second
+        now = time.time()
+        if hasattr(network, 'last_send_time'):
+            elapsed = now - network.last_send_time
+            if elapsed < 1.0:
+                await asyncio.sleep(1.0 - elapsed)
+        
         if network.writer:  # SSL connection
             network.writer.write(f"{message}\r\n".encode('utf-8'))
             await network.writer.drain()
@@ -670,6 +742,8 @@ shop_extra_magazine = 400
         elif network.sock:  # Non-SSL connection
             await asyncio.get_event_loop().sock_sendall(network.sock, f"{message}\r\n".encode('utf-8'))
             self.log_message("SEND", message)
+        
+        network.last_send_time = time.time()
     
     async def send_message(self, network: NetworkConnection, channel, message):
         """Send message to channel"""
@@ -765,7 +839,9 @@ shop_extra_magazine = 400
         bot_nicks = network.config['bot_nick'].split(',')
         # Remember our current nick to detect self-joins
         network.nick = bot_nicks[0]
-        await self.send_network(network, f"USER DuckHuntBot 0 * :Duck Hunt Game Bot v{self.version}")
+        # Use ident from config if available, otherwise use nickname
+        ident = network.config.get('ident', network.nick)
+        await self.send_network(network, f"USER {ident} 0 * :Duck Hunt Game Bot v{self.version}")
         await self.send_network(network, f"NICK {network.nick}")
     
     async def complete_registration(self, network: NetworkConnection):
@@ -1023,7 +1099,7 @@ shop_extra_magazine = 400
         mode: 'shoot' or 'bef'
         """
         # Use table accuracy, then apply temporary modifiers
-        props = self.get_level_properties(channel_stats['xp'])
+        props = self.get_level_properties(int(float(channel_stats['xp'])))
         base = props['accuracy_pct'] / 100.0
         if mode == 'shoot' and channel_stats.get('explosive_shots', 0) > 0:
             # Explosive: Accuracy = A + (1 - A) * 0.25
@@ -1105,8 +1181,8 @@ shop_extra_magazine = 400
 
     async def check_level_change(self, user: str, channel: str, stats: dict, prev_xp: int, network: NetworkConnection) -> None:
         """Announce promotion/demotion when XP crosses thresholds."""
-        prev_level = min(50, (prev_xp // 100) + 1)
-        new_level = min(50, (stats.get('xp', 0) // 100) + 1)
+        prev_level = min(50, (int(float(prev_xp)) // 100) + 1)
+        new_level = min(50, (int(float(stats.get('xp', 0))) // 100) + 1)
         if new_level == prev_level:
             return
         titles = [
@@ -1121,7 +1197,7 @@ shop_extra_magazine = 400
         stats['level'] = new_level
 
     def apply_level_bonuses(self, channel_stats):
-        props = self.get_level_properties(channel_stats['xp'])
+        props = self.get_level_properties(int(float(channel_stats['xp'])))
         # Base capacities from level table
         base_magazine_capacity = props['magazine_capacity']
         base_mags = props['magazines_max']
@@ -1413,8 +1489,8 @@ shop_extra_magazine = 400
                         wild_pen = math.floor(wild_pen / 2)
                 total_pen = miss_pen + wild_pen
                 channel_stats['confiscated'] = True
-                prev_xp = channel_stats['xp']
-                channel_stats['xp'] = max(0, channel_stats['xp'] + total_pen)
+                prev_xp = float(channel_stats['xp'])
+                self.safe_xp_operation(channel_stats, 'subtract', -total_pen)
                 channel_stats['wild_fires'] += 1
                 await self.send_message(network, channel, self.pm(user, f"Luckily you missed, but what did you aim at? There is no duck in the area... {self.colorize(f'[missed: {miss_pen} xp]', 'red')} {self.colorize(f'[wild fire: {wild_pen} xp]', 'red')} {self.colorize('[GUN CONFISCATED: wild fire]', 'red', bold=True)}"))
                 # Accidental shooting (wild fire): 50% chance to hit a random player
@@ -1433,7 +1509,7 @@ shop_extra_magazine = 400
                     if channel_stats.get('liability_insurance_until', 0) > now and acc_pen < 0:
                         acc_pen = math.floor(acc_pen / 2)
                     channel_stats['accidents'] += 1
-                    channel_stats['xp'] = max(0, channel_stats['xp'] + acc_pen)
+                    self.safe_xp_operation(channel_stats, 'subtract', -acc_pen)
                     insured = channel_stats.get('life_insurance_until', 0) > now
                     if insured:
                         channel_stats['confiscated'] = False
@@ -1443,7 +1519,7 @@ shop_extra_magazine = 400
                         extra = -1
                         if channel_stats.get('liability_insurance_until', 0) > now:
                             extra = math.floor(extra / 2)
-                        channel_stats['xp'] = max(0, channel_stats['xp'] + extra)
+                        self.safe_xp_operation(channel_stats, 'add', extra)
                         await self.send_message(network, channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp] [mirror glare: {extra} xp]{' [INSURED: no confiscation]' if insured else ''}"))
                     else:
                         await self.send_message(network, channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ''}"))
@@ -1455,7 +1531,7 @@ shop_extra_magazine = 400
             target_duck = self.active_ducks[channel_key][0]
             
             # Reliability (jam) check before consuming ammo
-            props = self.get_level_properties(channel_stats['xp'])
+            props = self.get_level_properties(int(float(channel_stats['xp'])))
             reliability = props['reliability_pct'] / 100.0
             # Grease halves jam odds while active
             if channel_stats.get('grease_until', 0) > time.time():
@@ -1492,7 +1568,7 @@ shop_extra_magazine = 400
                 # Random penalty (-1 to -5) on miss
                 penalty = -random.randint(1, 5)
                 prev_xp = channel_stats['xp']
-                channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
+                self.safe_xp_operation(channel_stats, 'subtract', -penalty)
                 await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} You missed. {self.colorize(f'[{penalty} xp]', 'red')}"))
                 # Ricochet accident: 20% chance to hit a random player
                 victim = None
@@ -1511,7 +1587,7 @@ shop_extra_magazine = 400
                     if channel_stats.get('liability_insurance_until', 0) > now2 and acc_pen < 0:
                         acc_pen = math.floor(acc_pen / 2)
                     channel_stats['accidents'] += 1
-                    channel_stats['xp'] = max(0, channel_stats['xp'] + acc_pen)
+                    self.safe_xp_operation(channel_stats, 'subtract', -acc_pen)
                     insured = channel_stats.get('life_insurance_until', 0) > now2
                     if insured:
                         channel_stats['confiscated'] = False
@@ -1522,7 +1598,7 @@ shop_extra_magazine = 400
                         extra = -1
                         if channel_stats.get('liability_insurance_until', 0) > now2:
                             extra = math.floor(extra / 2)
-                        channel_stats['xp'] = max(0, channel_stats['xp'] + extra)
+                        self.safe_xp_operation(channel_stats, 'add', extra)
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('ACCIDENT', 'red', bold=True)}     {self.colorize('Your bullet ricochets into', 'red')} {victim}! {self.colorize(f'[accident: {acc_pen} xp]', 'red')} {self.colorize(f'[mirror glare: {extra} xp]', 'purple')}{self.colorize(' [INSURED: no confiscation]', 'green') if insured else self.colorize(' [GUN CONFISCATED: accident]', 'red', bold=True)}"))
                     else:
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('ACCIDENT', 'red', bold=True)}     {self.colorize('Your bullet ricochets into', 'red')} {victim}! {self.colorize(f'[accident: {acc_pen} xp]', 'red')}{self.colorize(' [INSURED: no confiscation]', 'green') if insured else self.colorize(' [GUN CONFISCATED: accident]', 'red', bold=True)}"))
@@ -1582,14 +1658,14 @@ shop_extra_magazine = 400
                 xp_gain = 0
             
             prev_xp = channel_stats['xp']
-            channel_stats['xp'] += xp_gain
-            channel_stats['total_reaction_time'] += reaction_time
+            self.safe_xp_operation(channel_stats, 'add', xp_gain)
+            channel_stats['total_reaction_time'] = float(channel_stats.get('total_reaction_time', 0)) + float(reaction_time)
             
-            if not channel_stats['best_time'] or reaction_time < channel_stats['best_time']:
-                channel_stats['best_time'] = reaction_time
+            if not channel_stats['best_time'] or float(reaction_time) < float(channel_stats['best_time']):
+                channel_stats['best_time'] = float(reaction_time)
             
             # Check for level up (based on channel XP)
-            new_level = min(50, (channel_stats['xp'] // 100) + 1)
+            new_level = min(50, (int(float(channel_stats['xp'])) // 100) + 1)
         # Build item display string
         item_display = ""
         if 'inventory' in player and player['inventory']:
@@ -1601,7 +1677,7 @@ shop_extra_magazine = 400
                 item_display = f" [{', '.join(item_list)}]"
         
         # Level is now per-channel, but we'll use a simple calculation for display
-        current_channel_level = min(50, (channel_stats['xp'] // 100) + 1)
+        current_channel_level = min(50, (int(float(channel_stats['xp'])) // 100) + 1)
         
         if new_level > current_channel_level:
             level_titles = ["tourist", "noob", "duck hater", "duck hunter", "member of the Comitee Against Ducks", 
@@ -1642,7 +1718,7 @@ shop_extra_magazine = 400
                 self.log_action(f"No ducks to befriend in {channel} - active_ducks keys: {list(self.active_ducks.keys())}")
                 # Apply random penalty (-1 to -10) for befriending when no ducks are present
                 penalty = -random.randint(1, 10)
-                channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
+                self.safe_xp_operation(channel_stats, 'subtract', -penalty)
                 await self.send_message(network, channel, self.pm(user, f"There are no ducks to befriend. {self.colorize(f'[{penalty} XP]', 'red')}"))
                 self.save_player_data()
                 return
@@ -1660,7 +1736,7 @@ shop_extra_magazine = 400
                 # Random penalty (-1 to -10) on failed befriend (duck distracted)
                 penalty = -random.randint(1, 10)
                 channel_stats['misses'] += 1
-                channel_stats['xp'] = max(0, channel_stats['xp'] + penalty)
+                self.safe_xp_operation(channel_stats, 'subtract', -penalty)
                 await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'red', bold=True)} The duck seems distracted. Try again. {self.colorize(f'[{penalty} XP]', 'red')}"))
                 self.save_player_data()
                 return
@@ -1703,7 +1779,7 @@ shop_extra_magazine = 400
             else:
                 xp_gained = base_xp
             prev_xp = channel_stats['xp']
-            channel_stats['xp'] += xp_gained
+            self.safe_xp_operation(channel_stats, 'add', xp_gained)
             channel_stats['befriended_ducks'] += 1
             response = f"{self.colorize('*QUAACK!*', 'red', bold=True)} "
             if duck['golden']:
@@ -1824,7 +1900,7 @@ shop_extra_magazine = 400
                     await self.send_notice(network, user, f"You don't have enough XP in {channel}. You need {cost} xp.")
                     return
                 prev_xp = channel_stats['xp']
-                channel_stats['xp'] -= cost
+                self.safe_xp_operation(channel_stats, 'subtract', cost)
                 
                 # Apply item effects
                 if item_id == 1:  # Extra bullet
@@ -1834,7 +1910,7 @@ shop_extra_magazine = 400
                         await self.send_message(network, channel, self.pm(user, f"You just added an extra bullet. {self.colorize(f'[-{cost} XP]', 'red')} | Ammo: {channel_stats['ammo']}/{magazine_capacity}"))
                     else:
                         await self.send_message(network, channel, self.pm(user, f"Your magazine is already full."))
-                        channel_stats['xp'] += item['cost']  # Refund XP
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])  # Refund XP
                 elif item_id == 2:  # Extra magazine
                     mags_max = channel_stats.get('magazines_max', 2)
                     if channel_stats['magazines'] < mags_max:
@@ -1842,13 +1918,13 @@ shop_extra_magazine = 400
                         await self.send_message(network, channel, self.pm(user, f"You just added an extra magazine. {self.colorize(f'[-{cost} XP]', 'red')} | Magazines: {channel_stats['magazines']}/{mags_max}"))
                     else:
                         await self.send_message(network, channel, self.pm(user, f"You already have the maximum magazines."))
-                        channel_stats['xp'] += item['cost']  # Refund XP
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])  # Refund XP
                 elif item_id == 3:  # AP ammo: next 20 shots do +1 dmg vs golden (i.e., 2 total)
                     ap = channel_stats.get('ap_shots', 0)
                     ex = channel_stats.get('explosive_shots', 0)
                     if ap > 0 and ex == 0:
                         await self.send_notice(network, user, "AP ammo already active. Use it up before buying more.")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         switched = ex > 0
                         channel_stats['explosive_shots'] = 0
@@ -1862,7 +1938,7 @@ shop_extra_magazine = 400
                     ex = channel_stats.get('explosive_shots', 0)
                     if ex > 0 and ap == 0:
                         await self.send_notice(network, user, "Explosive ammo already active. Use it up before buying more.")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         switched = ap > 0
                         channel_stats['ap_shots'] = 0
@@ -1876,14 +1952,14 @@ shop_extra_magazine = 400
                     duration = 24 * 3600
                     if channel_stats.get('grease_until', 0) > now:
                         await self.send_notice(network, user, "Grease already applied. Wait until it wears off to buy more.")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
-                        channel_stats['grease_until'] = now + duration
+                        channel_stats['grease_until'] = float(now + duration)
                         await self.send_message(network, channel, self.pm(user, f"You purchased grease. Your gun will jam half as often for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 7:  # Sight: next shot accuracy boost; cannot stack
                     if channel_stats.get('sight_next_shot', False):
                         await self.send_notice(network, user, "Sight already mounted for your next shot. Use it before buying more.")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         channel_stats['sight_next_shot'] = True
                         await self.send_message(network, channel, self.pm(user, f"You purchased a sight. Your next shot will be more accurate. {self.colorize(f'[-{cost} XP]', 'red')}"))
@@ -1891,9 +1967,9 @@ shop_extra_magazine = 400
                     now = time.time()
                     if channel_stats.get('sunglasses_until', 0) > now:
                         await self.send_notice(network, user, "Sunglasses already active. Wait until they wear off to buy more.")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
-                        channel_stats['sunglasses_until'] = now + 24*3600
+                        channel_stats['sunglasses_until'] = float(now + 24*3600)
                         await self.send_message(network, channel, self.pm(user, f"You put on sunglasses for 24h. You're protected against mirror glare. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 12:  # Spare clothes: clear soaked if present
                     if channel_stats.get('soaked_until', 0) > time.time():
@@ -1901,32 +1977,32 @@ shop_extra_magazine = 400
                         await self.send_message(network, channel, self.pm(user, f"You change into spare clothes. You're no longer soaked. {self.colorize(f'[-{cost} XP]', 'red')}"))
                     else:
                         await self.send_notice(network, user, "You're not soaked. Refunding XP.")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                 elif item_id == 13:  # Brush for gun: unjam, clear sand, and small reliability buff for 24h
                     channel_stats['jammed'] = False
                     # Clear sand debuff if present
                     if channel_stats.get('sand_until', 0) > time.time():
                         channel_stats['sand_until'] = 0
-                    channel_stats['brush_until'] = max(channel_stats.get('brush_until', 0), time.time() + 24*3600)
+                    channel_stats['brush_until'] = max(float(channel_stats.get('brush_until', 0)), float(time.time() + 24*3600))
                     await self.send_message(network, channel, self.pm(user, f"You clean your gun and remove sand. It feels smoother for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 14:  # Mirror: apply dazzle debuff to target unless countered by sunglasses (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 14 <nick>")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel, network)
                         # If target has sunglasses active, mirror is countered
                         if tstats.get('sunglasses_until', 0) > time.time():
                             await self.send_message(network, channel, self.pm(user, f"{target} is wearing sunglasses. The mirror has no effect."))
-                            channel_stats['xp'] += item['cost']
+                            self.safe_xp_operation(channel_stats, 'add', item['cost'])
                         else:
                             tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
                             await self.send_message(network, channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 15:  # Handful of sand: victim reliability worse for 1h (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 15 <nick>")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel, network)
@@ -1935,7 +2011,7 @@ shop_extra_magazine = 400
                 elif item_id == 16:  # Water bucket: soak target for 1h (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 16 <nick>")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel, network)
@@ -1944,23 +2020,23 @@ shop_extra_magazine = 400
                 elif item_id == 17:  # Sabotage: jam target immediately (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 17 <nick>")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
                         tstats = self.get_channel_stats(target, channel, network)
                         tstats['jammed'] = True
                         await self.send_message(network, channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 18:  # Life insurance: protect against confiscation for 24h
-                    channel_stats['life_insurance_until'] = max(channel_stats.get('life_insurance_until', 0), time.time() + 24*3600)
+                    channel_stats['life_insurance_until'] = max(float(channel_stats.get('life_insurance_until', 0)), float(time.time() + 24*3600))
                     await self.send_message(network, channel, self.pm(user, f"You purchase life insurance. Confiscations will be prevented for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 19:  # Liability insurance: reduce penalties by 50% for 24h
-                    channel_stats['liability_insurance_until'] = max(channel_stats.get('liability_insurance_until', 0), time.time() + 24*3600)
+                    channel_stats['liability_insurance_until'] = max(float(channel_stats.get('liability_insurance_until', 0)), float(time.time() + 24*3600))
                     await self.send_message(network, channel, self.pm(user, f"You purchase liability insurance. Penalties reduced by 50% for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 22:  # Upgrade Magazine: increase magazine_capacity size (level 1-5), dynamic cost per level
                     current_level = channel_stats.get('mag_upgrade_level', 0)
                     if current_level >= 5:
                         await self.send_message(network, channel, self.pm(user, "Your magazine is already fully upgraded."))
-                        channel_stats['xp'] += cost
+                        self.safe_xp_operation(channel_stats, 'add', cost)
                     else:
                         next_level = current_level + 1
                         channel_stats['mag_upgrade_level'] = next_level
@@ -1974,11 +2050,11 @@ shop_extra_magazine = 400
                     if channel_stats.get('clover_until', 0) > now:
                         # Already active; refund
                         await self.send_notice(network, user, "Four-leaf clover already active. Wait until it expires to buy again.")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         bonus = random.choice([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
                         channel_stats['clover_bonus'] = bonus
-                        channel_stats['clover_until'] = now + duration
+                        channel_stats['clover_until'] = float(now + duration)
                         await self.send_message(network, channel, self.pm(user, f"Four-leaf clover activated for 24h. +{bonus} XP per duck. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 8:  # Infrared detector: 24h trigger lock window when no duck, limited uses
                     now = time.time()
@@ -1986,7 +2062,7 @@ shop_extra_magazine = 400
                     # Disallow purchase if active and has uses remaining
                     if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
                         await self.send_notice(network, user, "Infrared detector already active. Use it up before buying more.")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         new_until = now + duration
                         channel_stats['infrared_until'] = new_until
@@ -1998,14 +2074,14 @@ shop_extra_magazine = 400
                     duration = 24 * 3600
                     if channel_stats.get('silencer_until', 0) > now:
                         await self.send_notice(network, user, "Silencer already active. Wait until it wears off to buy more.")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
-                        channel_stats['silencer_until'] = now + duration
+                        channel_stats['silencer_until'] = float(now + duration)
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased a silencer.', 'green')} It will prevent frightening ducks for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 20:  # Bread: next 20 befriends count double vs golden
                     if channel_stats.get('bread_uses', 0) > 0:
                         await self.send_notice(network, user, "Bread already active. Use it up before buying more.")
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         channel_stats['bread_uses'] = 20
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('You purchased bread.', 'green')} Next 20 befriends are more effective. {self.colorize(f'[-{cost} XP]', 'red')}"))
@@ -2019,18 +2095,18 @@ shop_extra_magazine = 400
                         await self.send_message(network, channel, self.pm(user, f"You repurchased your confiscated gun. {self.colorize(f'[-{cost} XP]', 'red')} | Ammo: {magazine_capacity}/{magazine_capacity} | Magazines: {mags_max}/{mags_max}"))
                     else:
                         await self.send_message(network, channel, f"Your gun is not confiscated.")
-                        channel_stats['xp'] += item['cost']  # Refund XP
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])  # Refund XP
                 elif item_id == 21:  # Ducks detector (shop: full 24h duration)
                     now = time.time()
                     duration = 24 * 3600
-                    current_until = channel_stats.get('ducks_detector_until', 0)
-                    channel_stats['ducks_detector_until'] = max(current_until, now + duration)
+                    current_until = float(channel_stats.get('ducks_detector_until', 0))
+                    channel_stats['ducks_detector_until'] = max(current_until, float(now + duration))
                     await self.send_message(network, channel, self.pm(user, f"Ducks detector activated for 24h. You'll get a 60s pre-spawn notice. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 23:  # Extra Magazine: increase magazines_max (level 1-5), cost scales
                     current_level = channel_stats.get('mag_capacity_level', 0)
                     if current_level >= 5:
                         await self.send_message(network, channel, self.pm(user, "You already carry the maximum extra magazines."))
-                        channel_stats['xp'] += item['cost']
+                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         channel_stats['mag_capacity_level'] = current_level + 1
                         channel_stats['magazines_max'] = channel_stats.get('magazines_max', 2) + 1
@@ -2046,172 +2122,16 @@ shop_extra_magazine = 400
                 self.apply_level_bonuses(channel_stats)
                 if channel_stats.get('xp', 0) != prev_xp:
                     await self.check_level_change(user, channel, channel_stats, prev_xp, network)
+                
+                # Update SQL database with the changes
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                
                 self.save_player_data()
                 
             except ValueError:
                 await self.send_notice(network, user, "Invalid item ID.")
     
-    async def handle_duckstats(self, user, channel, args, network: NetworkConnection):
-        """Handle !duckstats command"""
-        if not self.check_authentication(user):
-            return
-        
-        target_user = args[0] if args else user
-        if target_user not in self.players:
-            await self.send_notice(network, user, "I do not know any hunter with that name.")
-            return
-        
-        player = self.players[target_user]
-        channel_stats = self.get_channel_stats(target_user, channel, network)
-        
-        # Calculate total stats across all channels
-        total_ducks = sum(stats['ducks_shot'] for stats in player['channel_stats'].values())
-        total_golden = sum(stats['golden_ducks'] for stats in player['channel_stats'].values())
-        total_shots = sum(stats['shots_fired'] for stats in player['channel_stats'].values())
-        total_reaction_time = sum(stats['total_reaction_time'] for stats in player['channel_stats'].values())
-        total_xp = sum(stats['xp'] for stats in player['channel_stats'].values())
-        
-        # Find best time across all channels
-        best_times = [stats['best_time'] for stats in player['channel_stats'].values() if stats['best_time']]
-        best_time = min(best_times) if best_times else None
-        
-        avg_reaction = total_reaction_time / max(1, total_shots)
-        channel_level = min(50, (channel_stats['xp'] // 100) + 1)
-        
-        stats_text = f"Hunting stats for {target_user} in {channel}: "
-        # Accuracy display from level table (+bread/explosive not shown here)
-        acc_pct = self.get_level_properties(channel_stats['xp'])['accuracy_pct']
-        magazine_capacity = channel_stats.get('magazine_capacity', 10)
-        mags_max = channel_stats.get('magazines_max', 2)
-        current_ammo_in_magazine_capacity = min(channel_stats['ammo'], magazine_capacity)
-        stats_text += f"[Weapon]  ammo: {current_ammo_in_magazine_capacity}/{magazine_capacity} | mag.: {channel_stats['magazines']}/{mags_max} | jammed: {'yes' if channel_stats['jammed'] else 'no'} | confisc.: {'yes' if channel_stats['confiscated'] else 'no'}  "
-        # Compute karma: proportion of good actions vs total actions
-        total_bad = channel_stats.get('misses', 0) + channel_stats.get('accidents', 0) + channel_stats.get('wild_fires', 0)
-        total_good = channel_stats.get('ducks_shot', 0) + channel_stats.get('befriended_ducks', 0)
-        total_actions = total_bad + total_good
-        karma_pct = 100.0 if total_actions == 0 else max(0.0, min(100.0, (total_good / total_actions) * 100.0))
-        stats_text += f"[Profile]  {channel_stats['xp']} xp | lvl {channel_level} | accuracy: {acc_pct}% | karma: {karma_pct:.2f}% good hunter  "
-        channel_best = f"{channel_stats['best_time']:.3f}s" if channel_stats['best_time'] else "N/A"
-        total_best = f"{best_time:.3f}s" if best_time else "N/A"
-        channel_avg = channel_stats['total_reaction_time']/max(1,channel_stats['shots_fired'])
-        
-        stats_text += f"[Channel Stats]  {channel_stats['ducks_shot']} ducks (incl. {channel_stats['golden_ducks']} golden) | best time: {channel_best} | avg react: {channel_avg:.3f}s  "
-        stats_text += f"[Total Stats]  {total_ducks} ducks (incl. {total_golden} golden) | {total_xp} xp | best time: {total_best} | avg react: {avg_reaction:.3f}s"
-
-        # Show consumables/effects with remaining counts or durations
-        ap = channel_stats.get('ap_shots', 0)
-        ex = channel_stats.get('explosive_shots', 0)
-        bread = channel_stats.get('bread_uses', 0)
-        parts = []
-        if ap > 0:
-            ap_label = f"AP Ammo [{ap}/20]" if ap <= 20 else f"AP Ammo [{ap}]"
-            parts.append(ap_label)
-        if ex > 0:
-            ex_label = f"Explosive Ammo [{ex}/20]" if ex <= 20 else f"Explosive Ammo [{ex}]"
-            parts.append(ex_label)
-        if bread > 0:
-            br_label = f"Bread [{bread}/20]" if bread <= 20 else f"Bread [{bread}]"
-            parts.append(br_label)
-        now = time.time()
-        # Helper to format remaining time
-        def fmt_dur(until: float) -> str:
-            rem = int(until - now)
-            if rem <= 0:
-                return "0m"
-            if rem >= 3600:
-                h = rem // 3600
-                m = (rem % 3600) // 60
-                return f"{h}h{m:02d}m"
-            else:
-                m = rem // 60
-                s = rem % 60
-                return f"{m}m{s:02d}s"
-        # Timed effects
-        if channel_stats.get('grease_until', 0) > now:
-            parts.append(f"Grease [{fmt_dur(channel_stats['grease_until'])}]")
-        if channel_stats.get('silencer_until', 0) > now:
-            parts.append(f"Silencer [{fmt_dur(channel_stats['silencer_until'])}]")
-        if channel_stats.get('sunglasses_until', 0) > now:
-            parts.append(f"Sunglasses [{fmt_dur(channel_stats['sunglasses_until'])}]")
-        if channel_stats.get('clover_until', 0) > now:
-            bonus = int(channel_stats.get('clover_bonus', 0))
-            parts.append(f"Four-leaf clover +{bonus} [{fmt_dur(channel_stats['clover_until'])}]")
-        if channel_stats.get('mirror_until', 0) > now:
-            parts.append(f"Mirror [{fmt_dur(channel_stats['mirror_until'])}]")
-        if channel_stats.get('sand_until', 0) > now:
-            parts.append(f"Sand [{fmt_dur(channel_stats['sand_until'])}]")
-        if channel_stats.get('soaked_until', 0) > now:
-            parts.append(f"Soaked [{fmt_dur(channel_stats['soaked_until'])}]")
-        if channel_stats.get('life_insurance_until', 0) > now:
-            parts.append(f"Life insurance [{fmt_dur(channel_stats['life_insurance_until'])}]")
-        if channel_stats.get('liability_insurance_until', 0) > now:
-            parts.append(f"Liability insurance [{fmt_dur(channel_stats['liability_insurance_until'])}]")
-        if channel_stats.get('brush_until', 0) > now:
-            parts.append(f"Brush [{fmt_dur(channel_stats['brush_until'])}]")
-        # Ducks detector remaining time
-        if channel_stats.get('ducks_detector_until', 0) > now:
-            parts.append(f"Ducks Detector [{fmt_dur(channel_stats['ducks_detector_until'])}]")
-        # Infrared detector remaining time and uses
-        infrared_until = channel_stats.get('infrared_until', 0)
-        if infrared_until and infrared_until > now:
-            parts.append(f"Infrared Detector [{fmt_dur(infrared_until)}]")
-            ir_uses = channel_stats.get('infrared_uses', 0)
-            if ir_uses > 0:
-                parts.append(f"Infrared Uses [{ir_uses}/6]")
-        # Sight
-        if channel_stats.get('sight_next_shot', False):
-            parts.append("Sight [next shot]")
-        if parts:
-            stats_text += "  |  Effects: " + " | ".join(parts)
-        
-        await self.send_notice(network, user, stats_text)
-    
-    async def handle_topduck(self, user, channel, args, network: NetworkConnection):
-        """Handle !topduck command"""
-        if not self.check_authentication(user):
-            return
-        
-        # Check if user wants duck count instead of XP
-        if args and args[0].lower() == "duck":
-            # Sort players by ducks killed in this channel
-            player_channel_stats = []
-            for player_name, player_data in self.players.items():
-                channel_stats = self.get_channel_stats(player_name, channel, network)
-                if channel_stats['ducks_shot'] > 0:
-                    player_channel_stats.append((player_name, channel_stats['ducks_shot']))
-            
-            sorted_players = sorted(player_channel_stats, key=lambda x: x[1], reverse=True)
-            top_players = sorted_players[:5]
-            
-            if not top_players:
-                top_text = "The scoreboard is empty. There are no top ducks."
-            else:
-                top_text = "The top duck(s) in " + channel + " by ducks killed are: "
-                player_list = []
-                for player_name, ducks_shot in top_players:
-                    player_list.append(f"{player_name} with {ducks_shot} ducks")
-                top_text += " | ".join(player_list)
-        else:
-            # Sort players by XP in this channel (default behavior)
-            player_channel_xp = []
-            for player_name, player_data in self.players.items():
-                channel_stats = self.get_channel_stats(player_name, channel, network)
-                if channel_stats['xp'] > 0:
-                    player_channel_xp.append((player_name, channel_stats['xp']))
-            
-            sorted_players = sorted(player_channel_xp, key=lambda x: x[1], reverse=True)
-            top_players = sorted_players[:5]
-            
-            if not top_players:
-                top_text = "The scoreboard is empty. There are no top ducks."
-            else:
-                top_text = "The top duck(s) in " + channel + " by total xp are: "
-                player_list = []
-                for player_name, xp in top_players:
-                    player_list.append(f"{player_name} with {xp} total xp")
-                top_text += " | ".join(player_list)
-        
-        await self.send_message(network, channel, top_text)
     
     async def handle_duckhelp(self, user, channel, network: NetworkConnection):
         """Handle !duckhelp command"""
@@ -2733,7 +2653,7 @@ shop_extra_magazine = 400
                 await say(f"By searching the bushes, you find an extra bullet! | Ammo: {channel_stats['ammo']}/{magazine_capacity}")
             else:
                 xp = 7
-                channel_stats['xp'] += xp
+                self.safe_xp_operation(channel_stats, 'add', xp)
                 await say(f"By searching the bushes, you find an extra bullet! Your magazine is full, so you gain {xp} XP instead.")
         elif choice == "extra_mag":
             if channel_stats['magazines'] < mags_max:
@@ -2741,13 +2661,13 @@ shop_extra_magazine = 400
                 await say(f"By searching the bushes, you find an extra ammo magazine_capacity! | Magazines: {channel_stats['magazines']}/{mags_max}")
             else:
                 xp = 20
-                channel_stats['xp'] += xp
+                self.safe_xp_operation(channel_stats, 'add', xp)
                 await say(f"By searching the bushes, you find an extra ammo magazine_capacity! You already have maximum magazines, so you gain {xp} XP instead.")
         elif choice == "sight_next":
             # If already active, convert to XP equal to shop price (shop_sight)
             if channel_stats.get('sight_next_shot', False):
                 sight_cost = int(self.config.get('DEFAULT', 'shop_sight', fallback=6))
-                channel_stats['xp'] += sight_cost
+                self.safe_xp_operation(channel_stats, 'add', sight_cost)
                 await say(f"You find a sight, but you already have one mounted for your next shot. [+{sight_cost} xp]")
             else:
                 channel_stats['sight_next_shot'] = True
@@ -2755,23 +2675,23 @@ shop_extra_magazine = 400
         elif choice == "silencer":
             if channel_stats.get('silencer_until', 0) > now:
                 cost = int(self.config.get('DEFAULT', 'shop_silencer', fallback=5))
-                channel_stats['xp'] += cost
+                self.safe_xp_operation(channel_stats, 'add', cost)
                 await say(f"You find a silencer, but you already have one active. [+{cost} xp]")
             else:
-                channel_stats['silencer_until'] = now + day
+                channel_stats['silencer_until'] = float(now + day)
                 await say("By searching the bushes, you find a silencer! It will prevent frightening ducks for 24h.")
         elif choice == "ducks_detector":
             if channel_stats.get('ducks_detector_until', 0) > now:
                 cost = int(self.config.get('DEFAULT', 'shop_ducks_detector', fallback=50))
-                channel_stats['xp'] += cost
+                self.safe_xp_operation(channel_stats, 'add', cost)
                 await say(f"You find a ducks detector, but you already have one active. [+{cost} xp]")
             else:
-                channel_stats['ducks_detector_until'] = now + day
+                channel_stats['ducks_detector_until'] = float(now + day)
                 await say("By searching the bushes, you find a ducks detector! You'll get a 60s pre-spawn notice for 24h.")
         elif choice == "ap_ammo":
             if channel_stats.get('ap_shots', 0) > 0:
                 xp = int(self.config.get('DEFAULT', 'shop_ap_ammo', fallback=15))
-                channel_stats['xp'] += xp
+                self.safe_xp_operation(channel_stats, 'add', xp)
                 await say(f"You find AP ammo, but you already have some. [+{xp} xp]")
             else:
                 channel_stats['explosive_shots'] = 0
@@ -2780,7 +2700,7 @@ shop_extra_magazine = 400
         elif choice == "explosive_ammo":
             if channel_stats.get('explosive_shots', 0) > 0:
                 xp = int(self.config.get('DEFAULT', 'shop_explosive_ammo', fallback=25))
-                channel_stats['xp'] += xp
+                self.safe_xp_operation(channel_stats, 'add', xp)
                 await say(f"You find explosive ammo, but you already have some. [+{xp} xp]")
             else:
                 channel_stats['ap_shots'] = 0
@@ -2789,31 +2709,31 @@ shop_extra_magazine = 400
         elif choice == "grease":
             if channel_stats.get('grease_until', 0) > now:
                 cost = int(self.config.get('DEFAULT', 'shop_grease', fallback=8))
-                channel_stats['xp'] += cost
+                self.safe_xp_operation(channel_stats, 'add', cost)
                 await say(f"You find grease, but you already have some applied. [+{cost} xp]")
             else:
-                channel_stats['grease_until'] = now + day
+                channel_stats['grease_until'] = float(now + day)
                 await say("By searching the bushes, you find grease! Your gun will jam half as often for 24h.")
         elif choice == "sunglasses":
             if channel_stats.get('sunglasses_until', 0) > now:
                 cost = int(self.config.get('DEFAULT', 'shop_sunglasses', fallback=5))
-                channel_stats['xp'] += cost
+                self.safe_xp_operation(channel_stats, 'add', cost)
                 await say(f"You find sunglasses, but you're already wearing some. [+{cost} xp]")
             else:
-                channel_stats['sunglasses_until'] = now + day
+                channel_stats['sunglasses_until'] = float(now + day)
                 await say("By searching the bushes, you find sunglasses! You're protected against bedazzlement for 24h.")
         elif choice == "infrared":
             if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
                 cost = int(self.config.get('DEFAULT', 'shop_infrared_detector', fallback=15))
-                channel_stats['xp'] += cost
+                self.safe_xp_operation(channel_stats, 'add', cost)
                 await say(f"You find an infrared detector, but yours is still active. [+{cost} xp]")
             else:
-                channel_stats['infrared_until'] = now + day
-                channel_stats['infrared_uses'] = max(channel_stats.get('infrared_uses', 0), 6)
+                channel_stats['infrared_until'] = float(now + day)
+                channel_stats['infrared_uses'] = max(int(channel_stats.get('infrared_uses', 0)), 6)
                 await say("By searching the bushes, you find an infrared detector! Trigger locks when no duck (6 uses, 24h).")
         elif choice == "wallet_150xp":
             xp = 150
-            channel_stats['xp'] += xp
+            self.safe_xp_operation(channel_stats, 'add', xp)
             # Try to pick a random victim name from channel
             victim = None
             if channel in network.channels and network.channels[channel]:
@@ -2824,7 +2744,7 @@ shop_extra_magazine = 400
             if channel_stats['magazines'] >= mags_max:
                 xp_options = [10, 20, 40, 50, 100]
                 xp = random.choice(xp_options)
-                channel_stats['xp'] += xp
+                self.safe_xp_operation(channel_stats, 'add', xp)
                 await say(f"By searching the bushes, you find a hunting magazine! You already have maximum magazines, so you gain {xp} XP instead.")
             else:
                 channel_stats['magazines'] = min(mags_max, channel_stats['magazines'] + 1)
@@ -2833,13 +2753,13 @@ shop_extra_magazine = 400
             # If already active, convert to XP equal to shop price
             if channel_stats.get('clover_until', 0) > now:
                 clover_cost = int(self.config.get('DEFAULT', 'shop_four_leaf_clover', fallback=13))
-                channel_stats['xp'] += clover_cost
+                self.safe_xp_operation(channel_stats, 'add', clover_cost)
                 await say(f"You find a four-leaf clover, but you already have its luck active. [+{clover_cost} xp]")
             else:
                 options = [1, 3, 5, 7, 8, 9, 10]
                 bonus = random.choice(options)
                 channel_stats['clover_bonus'] = bonus
-                channel_stats['clover_until'] = max(channel_stats.get('clover_until', 0), now + day)
+                channel_stats['clover_until'] = max(float(channel_stats.get('clover_until', 0)), float(now + day))
                 await say(f"By searching the bushes, you find a four-leaf clover! +{bonus} XP per duck for 24h.")
         else:  # junk
             junk_items = [
@@ -2871,16 +2791,6 @@ shop_extra_magazine = 400
             self.log_action(f"Calling handle_owner_command for {command}")
             await self.handle_owner_command(user, command, args, network)
     
-    async def run(self):
-        """Main bot loop"""
-        # Connect to all networks
-        tasks = []
-        for network_name, network in self.networks.items():
-            task = asyncio.create_task(self.run_network(network))
-            tasks.append(task)
-        
-        # Run all networks concurrently
-        await asyncio.gather(*tasks)
     
     async def run_network(self, network: NetworkConnection):
         """Run a single network connection"""
@@ -2981,15 +2891,29 @@ shop_extra_magazine = 400
             # Get all players for this network:channel
             channel_key = f"{network.name}:{channel}"
             
+            # Check if sorting by ducks or XP
+            sort_by_ducks = args and args[0].lower() == 'duck'
+            
             if self.data_storage == 'sql' and self.db_backend:
                 # SQL backend - get players from database
-                query = """SELECT p.username, cs.xp, cs.ducks_shot, cs.golden_ducks
+                if sort_by_ducks:
+                    order_by = "cs.ducks_shot DESC"
+                    metric = "ducks_shot"
+                    metric_label = "ducks"
+                else:
+                    order_by = "cs.xp DESC"
+                    metric = "xp"
+                    metric_label = "total xp"
+                
+                query = f"""SELECT p.username, cs.xp, cs.ducks_shot, cs.golden_ducks
                            FROM players p 
                            JOIN channel_stats cs ON p.id = cs.player_id 
                            WHERE cs.network_name = %s AND cs.channel_name = %s 
-                           ORDER BY cs.xp DESC 
+                           AND p.username != %s
+                           AND (cs.xp > 0 OR cs.ducks_shot > 0)
+                           ORDER BY {order_by}
                            LIMIT 10"""
-                players = self.db_backend.execute_query(query, (network.name, channel), fetch=True)
+                players = self.db_backend.execute_query(query, (network.name, channel, self.config.get('DEFAULT', 'nickname', fallback='DuckHuntBot')), fetch=True)
                 
                 if not players:
                     await self.send_message(network, channel, "The scoreboard is empty. There are no top ducks.")
@@ -2999,16 +2923,16 @@ shop_extra_magazine = 400
                 response_parts = []
                 for i, player in enumerate(players, 1):
                     username = player['username']
-                    xp = player['xp']
+                    value = player[metric]
                     ducks = player['ducks_shot']
                     golden = player['golden_ducks']
                     
-                    if i == 1:
-                        response_parts.append(f"{username} with {xp} total xp")
+                    if sort_by_ducks:
+                        response_parts.append(f"{username} with {ducks} ducks (incl. {golden} golden)")
                     else:
-                        response_parts.append(f"{username} with {xp} total xp")
+                        response_parts.append(f"{username} with {value} total xp")
                 
-                response = f"The top duck(s) in {channel} by total xp are: " + " | ".join(response_parts)
+                response = f"The top duck(s) in {channel} by {metric_label} are: " + " | ".join(response_parts)
                 
             else:
                 # JSON backend - get players from memory
@@ -3028,21 +2952,28 @@ shop_extra_magazine = 400
                     await self.send_message(network, channel, "The scoreboard is empty. There are no top ducks.")
                     return
                 
-                # Sort by XP
-                players_with_stats.sort(key=lambda x: x['xp'], reverse=True)
+                # Sort by ducks or XP
+                if sort_by_ducks:
+                    players_with_stats.sort(key=lambda x: x['ducks_shot'], reverse=True)
+                    metric_label = "ducks"
+                else:
+                    players_with_stats.sort(key=lambda x: x['xp'], reverse=True)
+                    metric_label = "total xp"
                 
                 # Build response
                 response_parts = []
                 for i, player in enumerate(players_with_stats[:10], 1):
                     username = player['name']
                     xp = player['xp']
+                    ducks = player['ducks_shot']
+                    golden = player['golden_ducks']
                     
-                    if i == 1:
-                        response_parts.append(f"{username} with {xp} total xp")
+                    if sort_by_ducks:
+                        response_parts.append(f"{username} with {ducks} ducks (incl. {golden} golden)")
                     else:
                         response_parts.append(f"{username} with {xp} total xp")
                 
-                response = f"The top duck(s) in {channel} by total xp are: " + " | ".join(response_parts)
+                response = f"The top duck(s) in {channel} by {metric_label} are: " + " | ".join(response_parts)
             
             await self.send_message(network, channel, response)
             
@@ -3059,15 +2990,14 @@ shop_extra_magazine = 400
             # Get player stats
             if self.data_storage == 'sql' and self.db_backend:
                 # SQL backend
-                player_id = self.db_backend.get_player_id(target_user)
-                stats = self.db_backend.get_channel_stats(player_id, network.name, channel)
+                stats = self.db_backend.get_channel_stats(target_user, network.name, channel)
                 
                 if not stats or stats.get('xp', 0) == 0:
                     await self.send_message(network, channel, f"No stats found for {target_user} in {channel}")
                     return
                 
                 # Apply level bonuses
-                stats = self.apply_level_bonuses(stats)
+                self.apply_level_bonuses(stats)
                 
             else:
                 # JSON backend
@@ -3083,11 +3013,11 @@ shop_extra_magazine = 400
                     return
                 
                 stats = stats_map[channel_key]
-                stats = self.apply_level_bonuses(stats)
+                self.apply_level_bonuses(stats)
             
             # Build response
-            xp = stats.get('xp', 0)
-            level = self.get_level_from_xp(xp)
+            xp = float(stats.get('xp', 0))
+            level = min(50, (int(xp) // 100) + 1)
             ducks_shot = stats.get('ducks_shot', 0)
             golden_ducks = stats.get('golden_ducks', 0)
             misses = stats.get('misses', 0)
@@ -3100,55 +3030,102 @@ shop_extra_magazine = 400
             mag_capacity = stats.get('magazine_capacity', 6)
             magazines_max = stats.get('magazines_max', 2)
             
-            response = f"Hunting stats for {target_user} in {channel} : "
+            # Calculate karma
+            total_bad = stats.get('misses', 0) + stats.get('accidents', 0) + stats.get('wild_fires', 0)
+            total_good = stats.get('ducks_shot', 0) + stats.get('befriended_ducks', 0)
+            total_actions = total_bad + total_good
+            karma_pct = 100.0 if total_actions == 0 else max(0.0, min(100.0, (total_good / total_actions) * 100.0))
+            
+            response = f"Hunting stats for {target_user} in {network.name}:{channel} : "
             response += f"[Weapon] ammo: {ammo}/{mag_capacity} | mag.: {magazines}/{magazines_max} | jammed: {'yes' if stats.get('jammed', False) else 'no'} | confisc.: {'yes' if stats.get('confiscated', False) else 'no'} "
-            response += f"[Profile] {xp} xp | lvl {level} | accuracy: {accuracy:.0f}% | karma: {self.get_karma(stats):.2f}% good hunter "
+            response += f"[Profile] {xp:.0f} xp | lvl {level} | accuracy: {accuracy:.0f}% | karma: {karma_pct:.2f}% good hunter "
             response += f"[Channel Stats] {ducks_shot} ducks (incl. {golden_ducks} golden) | best time: {best_time:.3f}s | avg react: {avg_reaction:.3f}s"
             
-            await self.send_message(network, channel, response)
+            await self.send_notice(network, user, response)
+            
+            # Build items display
+            items = []
+            now = time.time()
+            
+            # Helper to format remaining time
+            def fmt_dur(until: float) -> str:
+                rem = int(float(until) - now)
+                if rem <= 0:
+                    return "0m"
+                if rem >= 3600:
+                    h = rem // 3600
+                    m = (rem % 3600) // 60
+                    return f"{h}h{m:02d}m"
+                else:
+                    m = rem // 60
+                    s = rem % 60
+                    return f"{m}m{s:02d}s"
+            
+            # Consumables
+            ap = stats.get('ap_shots', 0)
+            if ap > 0:
+                items.append(self.colorize(f"[AP Ammo {ap}]", 'green'))
+            
+            ex = stats.get('explosive_shots', 0)
+            if ex > 0:
+                items.append(self.colorize(f"[Explosive Ammo {ex}]", 'green'))
+            
+            bread = stats.get('bread_uses', 0)
+            if bread > 0:
+                items.append(self.colorize(f"[bread {bread}]", 'green'))
+            
+            # Timed positive effects
+            if float(stats.get('grease_until', 0)) > now:
+                items.append(self.colorize(f"[grease {fmt_dur(stats['grease_until'])}]", 'green'))
+            
+            if float(stats.get('silencer_until', 0)) > now:
+                items.append(self.colorize(f"[silencer {fmt_dur(stats['silencer_until'])}]", 'green'))
+            
+            if float(stats.get('sunglasses_until', 0)) > now:
+                items.append(self.colorize(f"[sunglasses {fmt_dur(stats['sunglasses_until'])}]", 'green'))
+            
+            if float(stats.get('clover_until', 0)) > now:
+                bonus = int(stats.get('clover_bonus', 0))
+                items.append(self.colorize(f"[clover +{bonus} {fmt_dur(stats['clover_until'])}]", 'green'))
+            
+            if float(stats.get('life_insurance_until', 0)) > now:
+                items.append(self.colorize(f"[life insurance {fmt_dur(stats['life_insurance_until'])}]", 'green'))
+            
+            if float(stats.get('liability_insurance_until', 0)) > now:
+                items.append(self.colorize(f"[liability insurance {fmt_dur(stats['liability_insurance_until'])}]", 'green'))
+            
+            if float(stats.get('brush_until', 0)) > now:
+                items.append(self.colorize(f"[brush {fmt_dur(stats['brush_until'])}]", 'green'))
+            
+            if float(stats.get('ducks_detector_until', 0)) > now:
+                items.append(self.colorize(f"[ducks detector {fmt_dur(stats['ducks_detector_until'])}]", 'green'))
+            
+            infrared_until = float(stats.get('infrared_until', 0))
+            if infrared_until > now:
+                ir_uses = stats.get('infrared_uses', 0)
+                items.append(self.colorize(f"[trigger lock {fmt_dur(infrared_until)} ({ir_uses} uses)]", 'green'))
+            
+            if stats.get('sight_next_shot', False):
+                items.append(self.colorize("[sight]", 'green'))
+            
+            # Timed negative effects
+            if float(stats.get('mirror_until', 0)) > now:
+                items.append(self.colorize(f"[mirror {fmt_dur(stats['mirror_until'])}]", 'red'))
+            
+            if float(stats.get('sand_until', 0)) > now:
+                items.append(self.colorize(f"[sand {fmt_dur(stats['sand_until'])}]", 'red'))
+            
+            if float(stats.get('soaked_until', 0)) > now:
+                items.append(self.colorize(f"[soaked {fmt_dur(stats['soaked_until'])}]", 'red'))
+            
+            if items:
+                items_response = "[Items] " + " ".join(items)
+                await self.send_notice(network, user, items_response)
             
         except Exception as e:
             self.log_action(f"Error in handle_duckstats: {e}")
             await self.send_message(network, channel, "Error retrieving stats.")
 
-    async def handle_shop(self, user, channel, args, network):
-        """Handle !shop command"""
-        try:
-            if not args:
-                # Show shop menu
-                shop_items = [
-                    "1. Extra bullet (10 XP)",
-                    "2. Extra magazine (20 XP)", 
-                    "3. AP ammo (15 XP)",
-                    "4. Grease (25 XP)",
-                    "5. Repurchase confiscated gun (40 XP)",
-                    "6. Sight (30 XP)",
-                    "7. Silencer (35 XP)",
-                    "8. Trigger lock (15 XP)",
-                    "9. Sunglasses (20 XP)",
-                    "10. Four-leaf clover (13 XP)"
-                ]
-                
-                response = "Shop items: " + " | ".join(shop_items)
-                await self.send_message(network, channel, response)
-                return
-            
-            item_num = args[0]
-            if not item_num.isdigit():
-                await self.send_message(network, channel, "Invalid item number.")
-                return
-            
-            item_num = int(item_num)
-            if item_num < 1 or item_num > 10:
-                await self.send_message(network, channel, "Invalid item number. Use !shop to see available items.")
-                return
-            
-            # Process purchase
-            await self.process_shop_purchase(user, channel, item_num, network)
-            
-        except Exception as e:
-            self.log_action(f"Error in handle_shop: {e}")
-            await self.send_message(network, channel, "Error processing shop purchase.")
 
     async def main_loop(self, network):
         """Main message processing loop for a network"""
@@ -3261,15 +3238,6 @@ shop_extra_magazine = 400
         else:
             self.log_action("No networks configured")
 
-    async def run_network(self, network):
-        """Run the bot for a specific network"""
-        try:
-            await self.connect_network(network)
-            await self.main_loop(network)
-        except Exception as e:
-            self.log_action(f"Network {network.name} error: {e}")
-        finally:
-            await self.disconnect_network(network)
 
     async def disconnect_network(self, network):
         """Disconnect from a network"""
