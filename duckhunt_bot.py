@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build54
+Duck Hunt IRC Bot v1.0_build55
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 

@@ -1,8 +1,20 @@
-# Duck Hunt IRC Bot v1.0_build54
+# Duck Hunt IRC Bot v1.0_build55
 
-An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, and multi-network support. Players shoot ducks with `!bang` when they appear!
+An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build55
+- **Multilanguage Foundation**: Added complete multilanguage support system
+  - Created LanguageManager class with IRC color preservation
+  - Added 25 language files (English complete, 24 stubs ready for translation)
+  - Implemented `!ducklang` command for users to change language preference
+  - Color markers (`{{red:text}}`, `{{bold:text}}`) preserve IRC formatting in translations
+  - User language preferences saved to `language_prefs.json`
+  - Supported languages: English, Spanish, French, German, Russian, Japanese, Mandarin Chinese, Hindi, Arabic, Portuguese, Bengali, Urdu, Indonesian, Nigerian Pidgin, Marathi, Egyptian Arabic, Telugu, Turkish, Tamil, Cantonese, Vietnamese, Wu Chinese, Tagalog, Korean, and Farsi
+- **Duck Detector Improvements**: Fixed duplicate purchase bug and added immediate notice when purchased with spawn imminent
+- **Documentation**: Added `MULTILANG_ROADMAP.md` with implementation plan for full bot message refactoring
+- System ready for incremental translation of bot messages (Phase 1 pending)
 
 ### v1.0_build54
 - **Rate Limiting**: Added 1 message per second rate limiting per network to prevent flood issues
