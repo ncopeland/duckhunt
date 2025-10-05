@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 def test_sql_backend():
     """Test SQL backend functionality"""
     try:
+        import mysql.connector
         from duckhunt_bot import SQLBackend
         
         # Test connection
@@ -63,6 +64,7 @@ def test_sql_backend():
 def test_bot_with_sql():
     """Test bot initialization with SQL backend"""
     try:
+        import mysql.connector
         # Temporarily modify config to use SQL
         import configparser
         config = configparser.ConfigParser()

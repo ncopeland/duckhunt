@@ -1,0 +1,56 @@
+DuckHunt Bot SQL Backend Setup Instructions
+==========================================
+
+Since I can't access your MariaDB root password, please follow these steps:
+
+STEP 1: Create the database and user
+-----------------------------------
+Run this command:
+mysql -u root -p
+
+When prompted, enter your MariaDB root password.
+
+Then run these SQL commands (copy and paste them one by one):
+CREATE DATABASE IF NOT EXISTS duckhunt;
+DROP USER IF EXISTS 'duckhunt'@'localhost';
+CREATE USER 'duckhunt'@'localhost' IDENTIFIED BY 'duckhunt123';
+ALTER USER 'duckhunt'@'localhost' IDENTIFIED WITH mysql_native_password BY 'duckhunt123';
+GRANT ALL PRIVILEGES ON duckhunt.* TO 'duckhunt'@'localhost';
+FLUSH PRIVILEGES;
+exit;
+
+STEP 2: Create the database tables
+----------------------------------
+Run this command:
+mysql -u duckhunt -pduckhunt123 duckhunt < schema.sql
+
+STEP 3: Run the quick setup script
+----------------------------------
+Run this command:
+python3 quick_setup.py
+
+This script will:
+- Test the database connection
+- Migrate your existing JSON data to SQL
+- Update the bot configuration to use SQL
+- Verify everything is working
+
+STEP 4: Start the bot
+---------------------
+Run this command:
+python3 duckhunt_bot.py
+
+The bot will now use the SQL backend instead of the JSON file!
+
+TROUBLESHOOTING
+--------------
+If you get authentication errors, try this instead of step 1:
+mysql -u root -p
+CREATE DATABASE IF NOT EXISTS duckhunt;
+CREATE USER 'duckhunt'@'localhost' IDENTIFIED WITH mysql_native_password BY 'duckhunt123';
+GRANT ALL PRIVILEGES ON duckhunt.* TO 'duckhunt'@'localhost';
+FLUSH PRIVILEGES;
+exit;
+
+If you need to go back to JSON backend:
+Edit duckhunt.conf and change 'data_storage = sql' back to 'data_storage = json'

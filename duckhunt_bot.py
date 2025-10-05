@@ -186,6 +186,23 @@ class SQLBackend:
         
         return players
     
+    def clear_channel_stats(self, network_name, channel_name):
+        """Clear all channel stats for a specific network/channel"""
+        # First get count of affected players
+        count_query = """SELECT COUNT(DISTINCT p.id) 
+                         FROM players p 
+                         JOIN channel_stats cs ON p.id = cs.player_id 
+                         WHERE cs.network_name = %s AND cs.channel_name = %s"""
+        result = self.execute_query(count_query, (network_name, channel_name), fetch=True)
+        affected_count = result[0]['COUNT(DISTINCT p.id)'] if result else 0
+        
+        # Delete all channel stats for this network/channel
+        delete_query = """DELETE FROM channel_stats 
+                          WHERE network_name = %s AND channel_name = %s"""
+        success = self.execute_query(delete_query, (network_name, channel_name))
+        
+        return affected_count if success else 0
+    
     def close(self):
         """Close database connection"""
         if self.connection and self.connection.is_connected():
@@ -607,6 +624,15 @@ shop_extra_magazine = 400
         
         self.log_action(f"Connecting to {server}:{port} (network: {network.name})")
         
+        # Test DNS resolution first
+        try:
+            import socket as socket_module
+            resolved = socket_module.getaddrinfo(server, port, socket_module.AF_UNSPEC, socket_module.SOCK_STREAM)
+            self.log_action(f"DNS resolution successful for {server}: {len(resolved)} addresses found")
+        except Exception as e:
+            self.log_action(f"DNS resolution failed for {server}: {e}")
+            raise
+        
         if network.config.get('ssl', 'off').lower() == 'on':
             # Create SSL context and connect using asyncio
             network.ssl_context = ssl.create_default_context()
@@ -617,11 +643,24 @@ shop_extra_magazine = 400
             network.sock = network.writer.get_extra_info('socket')
             self.log_action(f"SSL connection established to {server}:{port}")
         else:
-            # Use AF_INET6 which supports both IPv4 and IPv6 (IPv4-mapped IPv6 addresses)
-            network.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            # Try IPv4 first, then IPv6 if that fails
+            try:
+                # Use AF_INET for IPv4 first
+                network.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                await asyncio.get_event_loop().sock_connect(network.sock, (server, port))
+                self.log_action(f"Connected to {server}:{port} via IPv4")
+            except Exception as e:
+                self.log_action(f"IPv4 connection failed: {e}, trying IPv6")
+                try:
+                    # Close the IPv4 socket and try IPv6
+                    network.sock.close()
+                    network.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+                    await asyncio.get_event_loop().sock_connect(network.sock, (server, port))
+                    self.log_action(f"Connected to {server}:{port} via IPv6")
+                except Exception as e2:
+                    self.log_action(f"Both IPv4 and IPv6 connections failed: IPv4={e}, IPv6={e2}")
+                    raise e2
             
-            # Use asyncio for non-blocking connect
-            await asyncio.get_event_loop().sock_connect(network.sock, (server, port))
             # Set socket to non-blocking mode
             network.sock.setblocking(False)
             network.reader = None
@@ -2261,31 +2300,49 @@ shop_extra_magazine = 400
             channel = args[0]
             self.log_action(f"Clear command received for {channel} from {user}")
             
-            channel_key = self.get_network_channel_key(network, channel)
-            norm_channel = self.normalize_channel(channel)
-            # Clear all player data for this channel (both old and new key formats)
             cleared_count = 0
-            for _player_name, player_data in self.players.items():
-                stats_map = player_data.get('channel_stats', {})
-                keys_to_delete = []
+            
+            if self.data_storage == 'sql' and self.db_backend:
+                # SQL backend - delete channel stats from database
+                network_name = network.name
+                channel_name = channel
                 
-                # Check for new format key (network:channel)
-                if channel_key in stats_map:
-                    keys_to_delete.append(channel_key)
+                cleared_count = self.db_backend.clear_channel_stats(network_name, channel_name)
+                self.log_action(f"Cleared {cleared_count} player stats from SQL for {network_name}:{channel_name}")
                 
-                # Check for old format keys (just channel name, with or without trailing spaces)
-                for key in list(stats_map.keys()):
-                    if self.normalize_channel(key) == norm_channel and key not in keys_to_delete:
-                        keys_to_delete.append(key)
+            else:
+                # JSON backend - original logic
+                channel_key = self.get_network_channel_key(network, channel)
+                norm_channel = self.normalize_channel(channel)
                 
-                # Delete all matching keys
-                if keys_to_delete:
-                    for key in keys_to_delete:
-                        del stats_map[key]
-                    cleared_count += 1
+                for _player_name, player_data in self.players.items():
+                    stats_map = player_data.get('channel_stats', {})
+                    keys_to_delete = []
+                    
+                    # Check for new format key (network:channel)
+                    if channel_key in stats_map:
+                        keys_to_delete.append(channel_key)
+                    
+                    # Check for old format keys (just channel name, with or without trailing spaces)
+                    for key in list(stats_map.keys()):
+                        if self.normalize_channel(key) == norm_channel and key not in keys_to_delete:
+                            keys_to_delete.append(key)
+                    
+                    # Delete all matching keys
+                    if keys_to_delete:
+                        for key in keys_to_delete:
+                            del stats_map[key]
+                        cleared_count += 1
             
             # Clear ducks for this channel
             async with self.ducks_lock:
+                if self.data_storage == 'sql' and self.db_backend:
+                    # For SQL backend, use network:channel format
+                    channel_key = f"{network.name}:{channel}"
+                else:
+                    # For JSON backend, use the existing logic
+                    channel_key = self.get_network_channel_key(network, channel)
+                
                 if channel_key in self.active_ducks:
                     del self.active_ducks[channel_key]
             
