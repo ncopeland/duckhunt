@@ -2975,6 +2975,135 @@ shop_extra_magazine = 400
         elif network.sock:  # Non-SSL connection
             network.sock.close()
 
+    async def main_loop(self, network):
+        """Main message processing loop for a network"""
+        while True:
+            try:
+                # Read message from network
+                if network.writer:  # SSL connection
+                    line = await network.reader.readline()
+                    if not line:
+                        break
+                    line = line.decode('utf-8').strip()
+                else:  # Non-SSL connection
+                    data = await asyncio.get_event_loop().sock_recv(network.sock, 4096)
+                    if not data:
+                        break
+                    line = data.decode('utf-8').strip()
+                
+                if line:
+                    self.log_message("RECV", line)
+                    await self.process_message(line, network)
+                    network.message_count += 1
+                
+                # Check for MOTD timeout (30 seconds) or message limit (100 messages)
+                if network.registered and hasattr(network, 'motd_start_time') and not hasattr(network, 'registration_complete') and not network.motd_timeout_triggered:
+                    elapsed = time.time() - network.motd_start_time
+                    if elapsed > 30 or network.message_count > 100:
+                        self.log_action(f"MOTD timeout for {network.name} ({elapsed:.1f}s, {network.message_count} messages) - completing registration")
+                        network.motd_timeout_triggered = True
+                        await self.complete_registration(network)
+                    elif elapsed > 25:  # Debug logging
+                        self.log_action(f"MOTD timeout approaching for {network.name}: {elapsed:.1f}s elapsed ({network.message_count} messages)")
+                
+                # Per-channel pre-spawn notices and spawns (only after registration)
+                if hasattr(network, 'registration_complete'):
+                    # Send any due pre-notices
+                    await self.notify_duck_detector(network)
+                    # Perform any due spawns per channel
+                    now = time.time()
+                    for ch, when in list(network.channel_next_spawn.items()):
+                        if when and now >= when:
+                            # If channel can't accept a new duck yet, defer by 5-15s
+                            if not await self.can_spawn_duck(ch, network):
+                                network.channel_next_spawn[ch] = now + random.randint(5, 15)
+                                continue
+                            # Clear schedule BEFORE spawning to prevent race conditions
+                            network.channel_next_spawn[ch] = None
+                            await self.spawn_duck(network, ch)
+                
+                # Check for duck despawn (only after registration, throttled to once per second)
+                if hasattr(network, 'registration_complete'):
+                    current_time = time.time()
+                    if current_time - network.last_despawn_check >= 1.0:
+                        await self.despawn_old_ducks(network)
+                        network.last_despawn_check = current_time
+                
+            except socket.error as e:
+                if e.errno == 11:  # EAGAIN/EWOULDBLOCK - no data available
+                    # Check for MOTD timeout (30 seconds)
+                    if network.registered and hasattr(network, 'motd_start_time') and not hasattr(network, 'registration_complete') and not network.motd_timeout_triggered:
+                        elapsed = time.time() - network.motd_start_time
+                        if elapsed > 30:
+                            self.log_action(f"MOTD timeout for {network.name} ({elapsed:.1f}s) - completing registration")
+                            network.motd_timeout_triggered = True
+                            await self.complete_registration(network)
+                        elif elapsed > 25:  # Debug logging
+                            self.log_action(f"MOTD timeout approaching for {network.name} (no data): {elapsed:.1f}s elapsed")
+                    
+                    # Per-channel pre-spawn notices and spawns during idle
+                    if hasattr(network, 'registration_complete'):
+                        await self.notify_duck_detector(network)
+                        now = time.time()
+                        for ch, when in list(network.channel_next_spawn.items()):
+                            if when and now >= when:
+                                if not await self.can_spawn_duck(ch, network):
+                                    network.channel_next_spawn[ch] = now + random.randint(5, 15)
+                                    continue
+                                # Clear schedule BEFORE spawning to prevent race conditions
+                                network.channel_next_spawn[ch] = None
+                                await self.spawn_duck(network, ch)
+                    
+                    await asyncio.sleep(0.1)  # Small delay to prevent busy waiting
+                    continue
+                else:
+                    self.log_action(f"Socket error: {e}")
+                    break
+            except Exception as e:
+                self.log_action(f"Error: {e}")
+                break
+        
+        # Close connection properly
+        if network.writer:  # SSL connection
+            network.writer.close()
+            await network.writer.wait_closed()
+        elif network.sock:  # Non-SSL connection
+            network.sock.close()
+
+    async def run(self):
+        """Main bot loop"""
+        self.log_action("DuckHunt Bot starting...")
+        
+        # Create tasks for each network
+        tasks = []
+        for network_name, network in self.networks.items():
+            task = asyncio.create_task(self.run_network(network))
+            tasks.append(task)
+        
+        # Run all network tasks concurrently
+        if tasks:
+            await asyncio.gather(*tasks)
+        else:
+            self.log_action("No networks configured")
+
+    async def run_network(self, network):
+        """Run the bot for a specific network"""
+        try:
+            await self.connect_network(network)
+            await self.main_loop(network)
+        except Exception as e:
+            self.log_action(f"Network {network.name} error: {e}")
+        finally:
+            await self.disconnect_network(network)
+
+    async def disconnect_network(self, network):
+        """Disconnect from a network"""
+        if network.writer:  # SSL connection
+            network.writer.close()
+            await network.writer.wait_closed()
+        elif network.sock:  # Non-SSL connection
+            network.sock.close()
+
 if __name__ == "__main__":
     bot = DuckHuntBot()
     asyncio.run(bot.run())
