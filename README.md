@@ -1,8 +1,16 @@
-# Duck Hunt IRC Bot v1.0_build65
+# Duck Hunt IRC Bot v1.0_build66
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build66
+- **Naming Fix**: Completed renaming "Infrared detector" to "Trigger Lock"
+  - Fixed shop menu display: now shows "8- Trigger Lock (15 xp)"
+  - Fixed purchase message: now says "Trigger Lock enabled for 24h00m"
+  - Fixed duplicate purchase message: now says "Trigger Lock already active"
+  - Fixed loot drop messages: now says "find a Trigger Lock"
+  - All references now consistently use "Trigger Lock" terminology
 
 ### v1.0_build65
 - **Critical Fix**: Fixed duck kill counter not incrementing in database

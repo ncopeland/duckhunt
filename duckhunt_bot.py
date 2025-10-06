@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build65
+Duck Hunt IRC Bot v1.0_build66
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -442,7 +442,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build65"
+        self.version = "1.0_build66"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-language support
@@ -497,7 +497,7 @@ class DuckHuntBot:
             5: {"name": "Repurchase confiscated gun", "cost": int(self.config.get('DEFAULT', 'shop_repurchase_gun', fallback=40)), "description": "Buy back your confiscated weapon"},
             6: {"name": "Grease", "cost": int(self.config.get('DEFAULT', 'shop_grease', fallback=8)), "description": "Halves jamming odds for 24h"},
             7: {"name": "Sight", "cost": int(self.config.get('DEFAULT', 'shop_sight', fallback=6)), "description": "Increases accuracy for next shot"},
-            8: {"name": "Infrared detector", "cost": int(self.config.get('DEFAULT', 'shop_infrared_detector', fallback=15)), "description": "Locks trigger when no duck present"},
+            8: {"name": "Trigger Lock", "cost": int(self.config.get('DEFAULT', 'shop_infrared_detector', fallback=15)), "description": "Locks trigger when no duck present"},
             9: {"name": "Silencer", "cost": int(self.config.get('DEFAULT', 'shop_silencer', fallback=5)), "description": "Prevents scaring ducks when shooting"},
             10: {"name": "Four-leaf clover", "cost": int(self.config.get('DEFAULT', 'shop_four_leaf_clover', fallback=13)), "description": "Extra XP for each duck shot"},
             11: {"name": "Sunglasses", "cost": int(self.config.get('DEFAULT', 'shop_sunglasses', fallback=5)), "description": "Protects against mirror dazzle"},
@@ -1502,7 +1502,7 @@ shop_extra_magazine = 400
         async with self.ducks_lock:
             channel_key = self.get_network_channel_key(network, channel)
             if channel_key not in self.active_ducks:
-                # Infrared Detector: if active AND has uses, allow safe trigger lock and consume one use
+                # Trigger Lock: if active AND has uses, allow safe trigger lock and consume one use
                 now = time.time()
                 if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
                     channel_stats['infrared_uses'] = max(0, channel_stats.get('infrared_uses', 0) - 1)
@@ -2126,19 +2126,19 @@ shop_extra_magazine = 400
                         channel_stats['clover_bonus'] = bonus
                         channel_stats['clover_until'] = float(now + duration)
                         await self.send_message(network, channel, self.pm(user, f"Four-leaf clover activated for 24h. +{bonus} XP per duck. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                elif item_id == 8:  # Infrared detector: 24h trigger lock window when no duck, limited uses
+                elif item_id == 8:  # Trigger Lock: 24h trigger lock window when no duck, limited uses
                     now = time.time()
                     duration = 24 * 3600
                     # Disallow purchase if active and has uses remaining
                     if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
-                        await self.send_notice(network, user, "Infrared detector already active. Use it up before buying more.")
+                        await self.send_notice(network, user, "Trigger Lock already active. Use it up before buying more.")
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         new_until = now + duration
                         channel_stats['infrared_until'] = new_until
                         channel_stats['infrared_uses'] = 6
                         hours = duration // 3600
-                        await self.send_message(network, channel, self.pm(user, f"Infrared detector enabled for {hours}h00m. Trigger lock has 6 uses. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                        await self.send_message(network, channel, self.pm(user, f"Trigger Lock enabled for {hours}h00m. Trigger lock has 6 uses. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 9:  # Silencer: 24h protection against scaring ducks
                     now = time.time()
                     duration = 24 * 3600
@@ -2871,11 +2871,11 @@ shop_extra_magazine = 400
             if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
                 cost = int(self.config.get('DEFAULT', 'shop_infrared_detector', fallback=15))
                 self.safe_xp_operation(channel_stats, 'add', cost)
-                await say(f"You find an infrared detector, but yours is still active. [+{cost} xp]")
+                await say(f"You find a Trigger Lock, but yours is still active. [+{cost} xp]")
             else:
                 channel_stats['infrared_until'] = float(now + day)
                 channel_stats['infrared_uses'] = max(int(channel_stats.get('infrared_uses', 0)), 6)
-                await say("By searching the bushes, you find an infrared detector! Trigger locks when no duck (6 uses, 24h).")
+                await say("By searching the bushes, you find a Trigger Lock! Trigger locks when no duck (6 uses, 24h).")
         elif choice == "wallet_150xp":
             xp = 150
             self.safe_xp_operation(channel_stats, 'add', xp)
