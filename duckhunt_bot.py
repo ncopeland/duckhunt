@@ -442,7 +442,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build58"
+        self.version = "1.0_build59"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-language support
@@ -1633,6 +1633,7 @@ shop_extra_magazine = 400
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('ACCIDENT', 'red', bold=True)}     {self.colorize('Your bullet ricochets into', 'red')} {victim}! {self.colorize(f'[accident: {acc_pen} xp]', 'red')} {self.colorize(f'[mirror glare: {extra} xp]', 'purple')}{self.colorize(' [INSURED: no confiscation]', 'green') if insured else self.colorize(' [GUN CONFISCATED: accident]', 'red', bold=True)}"))
                     else:
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('ACCIDENT', 'red', bold=True)}     {self.colorize('Your bullet ricochets into', 'red')} {victim}! {self.colorize(f'[accident: {acc_pen} xp]', 'red')}{self.colorize(' [INSURED: no confiscation]', 'green') if insured else self.colorize(' [GUN CONFISCATED: accident]', 'red', bold=True)}"))
+                # Save after miss (with or without ricochet)
                 await self.check_level_change(user, channel, channel_stats, prev_xp, network)
                 if self.data_storage == 'sql' and self.db_backend:
                     self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
