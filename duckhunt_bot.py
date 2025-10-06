@@ -1605,7 +1605,6 @@ shop_extra_magazine = 400
                 await self.send_message(network, channel, self.pm(user, "You are soaked and cannot shoot. Use spare clothes or wait."))
                 return
             if hit_roll > hit_chance:
-                channel_stats['shots_fired'] += 1
                 channel_stats['misses'] += 1
                 # Random penalty (-1 to -5) on miss
                 penalty = -random.randint(1, 5)
@@ -1665,19 +1664,34 @@ shop_extra_magazine = 400
             target_duck['health'] -= damage
             duck_killed = target_duck['health'] <= 0
             
-            # Reveal golden duck on first hit
-            if target_duck['golden'] and not target_duck.get('revealed', False):
-                target_duck['revealed'] = True
-                # Add golden duck message to the same line as the hit message
-                remaining = max(0, target_duck['health'])
-                hit_msg = f"{self.colorize('*BANG*', 'red', bold=True)} You hit the duck! {self.colorize('[GOLDEN DUCK DETECTED]', 'yellow', bold=True)} {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"
-                await self.send_message(network, channel, self.pm(user, hit_msg))
-                # Save ammo consumption
-                if self.data_storage == 'sql' and self.db_backend:
-                    self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+            # Handle golden duck hits
+            if target_duck['golden']:
+                if not target_duck.get('revealed', False):
+                    # First hit - reveal the golden duck
+                    target_duck['revealed'] = True
+                    remaining = max(0, target_duck['health'])
+                    hit_msg = f"{self.colorize('*BANG*', 'red', bold=True)} You hit the duck! {self.colorize('[GOLDEN DUCK DETECTED]', 'yellow', bold=True)} {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"
+                    await self.send_message(network, channel, self.pm(user, hit_msg))
+                    # If duck survived, show survival message and return
+                    if not duck_killed:
+                        await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"))
+                        # Save ammo consumption for hit
+                        if self.data_storage == 'sql' and self.db_backend:
+                            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+                        else:
+                            self.save_player_data()
+                        return
                 else:
-                    self.save_player_data()
-                return
+                    # Already revealed golden duck - show survival message if not killed
+                    if not duck_killed:
+                        remaining = max(0, target_duck['health'])
+                        await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"))
+                        # Save ammo consumption for hit
+                        if self.data_storage == 'sql' and self.db_backend:
+                            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+                        else:
+                            self.save_player_data()
+                        return
             
             # Remove if dead
             if duck_killed and channel_key in self.active_ducks:
@@ -2601,7 +2615,10 @@ shop_extra_magazine = 400
             self.log_action(f"Owner {user} made bot say to {target_channel}: {message}")
             await self.send_notice(network, user, f"Sent message to {target_channel}: {message}")
         elif command == "nextduck":
-            # Owner-only: report next scheduled spawn for this channel
+            # Admin-only: report next scheduled spawn for this channel
+            if not self.is_admin(user, network) and not self.is_owner(user, network):
+                await self.send_notice(network, user, "You don't have permission to use admin commands.")
+                return
             now = time.time()
             # Match schedule key by normalized channel to avoid trailing-space mismatch
             norm = self.normalize_channel(channel)
@@ -2762,8 +2779,8 @@ shop_extra_magazine = 400
         elif command == "ducklang":
             await self.handle_ducklang(user, channel, args, network)
         elif command == "nextduck":
-            # Owner-only, invoked in channel
-            if not self.is_owner(user, network):
+            # Admin-only, invoked in channel
+            if not self.is_admin(user, network) and not self.is_owner(user, network):
                 return
             now = time.time()
             norm = self.normalize_channel(channel)
