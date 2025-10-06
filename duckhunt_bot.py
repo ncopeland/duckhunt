@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build64
+Duck Hunt IRC Bot v1.0_build65
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -442,7 +442,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build64"
+        self.version = "1.0_build65"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-language support
@@ -1686,9 +1686,10 @@ shop_extra_magazine = 400
                     del self.active_ducks[channel_key]
                 # Quietly unconfiscate all on this channel
                 self.unconfiscate_confiscated_in_channel(channel, network)
-            channel_stats['last_duck_time'] = time.time()  # Record when duck was shot
+            channel_stats['last_duck_time'] = datetime.fromtimestamp(time.time())  # Record when duck was shot
             if duck_killed:
                 # Only record when duck is actually killed
+                old_count = channel_stats['ducks_shot']
                 channel_stats['ducks_shot'] += 1
                 self.channel_last_duck_time[channel_key] = time.time()
                 # Base XP for kill (golden vs regular)

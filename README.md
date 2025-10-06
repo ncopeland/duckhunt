@@ -1,8 +1,16 @@
-# Duck Hunt IRC Bot v1.0_build64
+# Duck Hunt IRC Bot v1.0_build65
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build65
+- **Critical Fix**: Fixed duck kill counter not incrementing in database
+  - Root cause: SQL datetime error was preventing database updates from succeeding
+  - Fixed `last_duck_time` field to use proper datetime format instead of Unix timestamp
+  - Duck kill counter now properly increments: 8 → 9 → 10 ducks, etc.
+  - Database persistence now works correctly for all stat changes
+  - Removed debug logging after successful fix
 
 ### v1.0_build64
 - **Bug Fix**: Fixed `!lastduck` command showing incorrect data
