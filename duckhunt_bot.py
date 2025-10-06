@@ -442,7 +442,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build56"
+        self.version = "1.0_build57"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-language support
@@ -1098,13 +1098,22 @@ shop_extra_magazine = 400
             stats['magazines'] = stats.get('magazines_max', 2)
         return stats
 
+    def _filter_computed_stats(self, stats_dict):
+        """Remove computed fields that shouldn't be persisted to database"""
+        return {k: v for k, v in stats_dict.items() if k not in [
+            'magazine_capacity', 'magazines_max', 'miss_penalty', 'wild_penalty', 
+            'accident_penalty', 'reliability_pct'
+        ]}
+    
     def update_stats_in_backend(self, user, channel, network, stats_dict):
         """Update stats in the appropriate backend (SQL or JSON)"""
         if self.data_storage == 'sql' and self.db_backend:
             # Update in SQL backend
+            # Remove computed fields before saving (these are recalculated by apply_level_bonuses)
+            save_stats = self._filter_computed_stats(stats_dict)
             network_name = network.name if network else 'unknown'
             channel_name = channel
-            return self.db_backend.update_channel_stats(user, network_name, channel_name, stats_dict)
+            return self.db_backend.update_channel_stats(user, network_name, channel_name, save_stats)
         else:
             # JSON backend - stats are already updated in memory, just save to file
             self.save_player_data()
@@ -1493,7 +1502,7 @@ shop_extra_magazine = 400
                     remaining_color = 'red' if remaining_uses == 0 else 'green'
                     await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLICK*', 'red', bold=True)} Trigger locked. {self.colorize(f'[{remaining_uses} remaining]', remaining_color)}"))
                     if self.data_storage == 'sql' and self.db_backend:
-                        self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                        self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                     else:
                         self.save_player_data()
                     return
@@ -1542,7 +1551,7 @@ shop_extra_magazine = 400
                         await self.send_message(network, channel, self.pm(user, f"ACCIDENT     You accidentally shot {victim}! [accident: {acc_pen} xp]{' [INSURED: no confiscation]' if insured else ''}"))
                 await self.check_level_change(user, channel, channel_stats, prev_xp, network)
                 if self.data_storage == 'sql' and self.db_backend:
-                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                    self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
                     self.save_player_data()
                 return
@@ -1568,7 +1577,7 @@ shop_extra_magazine = 400
                 mags_max = channel_stats.get('magazines_max', 2)
                 await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLACK*', 'red')} Your gun is {self.colorize('JAMMED', 'red', bold=True)} you must reload to unjam it... | Ammo: {channel_stats['ammo']}/{magazine_capacity} | Magazines : {channel_stats['magazines']}/{mags_max}"))
                 if self.data_storage == 'sql' and self.db_backend:
-                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                    self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
                     self.save_player_data()
                 return
@@ -1627,7 +1636,7 @@ shop_extra_magazine = 400
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('ACCIDENT', 'red', bold=True)}     {self.colorize('Your bullet ricochets into', 'red')} {victim}! {self.colorize(f'[accident: {acc_pen} xp]', 'red')}{self.colorize(' [INSURED: no confiscation]', 'green') if insured else self.colorize(' [GUN CONFISCATED: accident]', 'red', bold=True)}"))
                 await self.check_level_change(user, channel, channel_stats, prev_xp, network)
                 if self.data_storage == 'sql' and self.db_backend:
-                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                    self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
                     self.save_player_data()
                 return
@@ -1728,7 +1737,7 @@ shop_extra_magazine = 400
         
         # Save changes to database
         if self.data_storage == 'sql' and self.db_backend:
-            self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
         else:
             self.save_player_data()
     
@@ -1751,7 +1760,7 @@ shop_extra_magazine = 400
                 self.safe_xp_operation(channel_stats, 'subtract', -penalty)
                 await self.send_message(network, channel, self.pm(user, f"There are no ducks to befriend. {self.colorize(f'[{penalty} XP]', 'red')}"))
                 if self.data_storage == 'sql' and self.db_backend:
-                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                    self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
                     self.save_player_data()
                 return
@@ -1772,7 +1781,7 @@ shop_extra_magazine = 400
                 self.safe_xp_operation(channel_stats, 'subtract', -penalty)
                 await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'red', bold=True)} The duck seems distracted. Try again. {self.colorize(f'[{penalty} XP]', 'red')}"))
                 if self.data_storage == 'sql' and self.db_backend:
-                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                    self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
                     self.save_player_data()
                 return
@@ -1833,7 +1842,7 @@ shop_extra_magazine = 400
         
         # Save changes to database
         if self.data_storage == 'sql' and self.db_backend:
-            self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
         else:
             self.save_player_data()
     
@@ -1874,9 +1883,9 @@ shop_extra_magazine = 400
             mags_max = channel_stats.get('magazines_max', 2)
             await self.send_message(network, channel, self.pm(user, f"Your gun doesn't need to be reloaded. | Ammo: {channel_stats['ammo']}/{magazine_capacity} | Magazines: {channel_stats['magazines']}/{mags_max}"))
         
-        # Save changes to database
+        # Save changes to database (only save fields that are persisted, not computed)
         if self.data_storage == 'sql' and self.db_backend:
-            self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
         else:
             self.save_player_data()
     
@@ -2179,7 +2188,7 @@ shop_extra_magazine = 400
                 
                 # Update SQL database with the changes
                 if self.data_storage == 'sql' and self.db_backend:
-                    self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+                    self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
                     self.save_player_data()
                 
@@ -2329,7 +2338,7 @@ shop_extra_magazine = 400
                 channel_stats['magazines'] = mags_max
                 await self.send_message(network, channel, f"{target} has been rearmed.")
                 if self.data_storage == 'sql' and self.db_backend:
-                    self.db_backend.update_channel_stats(target, network.name, channel, channel_stats)
+                    self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
                     self.save_player_data()
         elif command == "disarm" and args:
@@ -2341,7 +2350,7 @@ shop_extra_magazine = 400
                 channel_stats['ammo'] = 0
                 await self.send_message(network, channel, f"{target} has been disarmed.")
                 if self.data_storage == 'sql' and self.db_backend:
-                    self.db_backend.update_channel_stats(target, network.name, channel, channel_stats)
+                    self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
                     self.save_player_data()
     
@@ -2370,7 +2379,7 @@ shop_extra_magazine = 400
                 channel_stats['ammo'] = 0
                 await self.send_notice(network, user, f"{target} has been disarmed in {channel}.")
                 if self.data_storage == 'sql' and self.db_backend:
-                    self.db_backend.update_channel_stats(target, network.name, channel, channel_stats)
+                    self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
                     self.save_player_data()
         elif command == "reload":
@@ -2874,7 +2883,7 @@ shop_extra_magazine = 400
 
         # Save changes to database
         if self.data_storage == 'sql' and self.db_backend:
-            self.db_backend.update_channel_stats(user, network.name, channel, channel_stats)
+            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
         else:
             self.save_player_data()
     
