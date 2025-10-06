@@ -140,7 +140,9 @@ class SQLBackend:
         result = self.execute_query(query, (player_id, network_name, channel_name), fetch=True)
         
         if result:
-            return result[0]
+            stats = result[0]
+            print(f"SQL DEBUG: Retrieved stats for {username} - magazines={stats.get('magazines', 'N/A')}, magazines_max={stats.get('magazines_max', 'N/A')}")
+            return stats
         else:
             # Create new channel stats
             query = """INSERT INTO channel_stats 
@@ -497,7 +499,7 @@ class DuckHuntBot:
             5: {"name": "Repurchase confiscated gun", "cost": int(self.config.get('DEFAULT', 'shop_repurchase_gun', fallback=40)), "description": "Buy back your confiscated weapon"},
             6: {"name": "Grease", "cost": int(self.config.get('DEFAULT', 'shop_grease', fallback=8)), "description": "Halves jamming odds for 24h"},
             7: {"name": "Sight", "cost": int(self.config.get('DEFAULT', 'shop_sight', fallback=6)), "description": "Increases accuracy for next shot"},
-            8: {"name": "Trigger Lock", "cost": int(self.config.get('DEFAULT', 'shop_infrared_detector', fallback=15)), "description": "Locks trigger when no duck present"},
+            8: {"name": "Safety Lock", "cost": int(self.config.get('DEFAULT', 'shop_infrared_detector', fallback=15)), "description": "Locks gun when no duck present"},
             9: {"name": "Silencer", "cost": int(self.config.get('DEFAULT', 'shop_silencer', fallback=5)), "description": "Prevents scaring ducks when shooting"},
             10: {"name": "Four-leaf clover", "cost": int(self.config.get('DEFAULT', 'shop_four_leaf_clover', fallback=13)), "description": "Extra XP for each duck shot"},
             11: {"name": "Sunglasses", "cost": int(self.config.get('DEFAULT', 'shop_sunglasses', fallback=5)), "description": "Protects against mirror dazzle"},
@@ -1036,8 +1038,8 @@ shop_extra_magazine = 400
                     'explosive_shots': 0,
                     'bread_uses': 0,
                     'befriended_ducks': 0,
-                    'infrared_until': 0,
-                    'infrared_uses': 0,
+                    'trigger_lock_until': 0,
+                    'trigger_lock_uses': 0,
                     'grease_until': 0,
                     'silencer_until': 0,
                     'sunglasses_until': 0,
@@ -1061,10 +1063,10 @@ shop_extra_magazine = 400
             stats['explosive_shots'] = 0
         if 'bread_uses' not in stats:
             stats['bread_uses'] = 0
-        if 'infrared_until' not in stats:
-            stats['infrared_until'] = 0
-        if 'infrared_uses' not in stats:
-            stats['infrared_uses'] = 0
+        if 'trigger_lock_until' not in stats:
+            stats['trigger_lock_until'] = 0
+        if 'trigger_lock_uses' not in stats:
+            stats['trigger_lock_uses'] = 0
         if 'grease_until' not in stats:
             stats['grease_until'] = 0
         if 'silencer_until' not in stats:
@@ -1504,11 +1506,11 @@ shop_extra_magazine = 400
             if channel_key not in self.active_ducks:
                 # Trigger Lock: if active AND has uses, allow safe trigger lock and consume one use
                 now = time.time()
-                if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
-                    channel_stats['infrared_uses'] = max(0, channel_stats.get('infrared_uses', 0) - 1)
-                    remaining_uses = channel_stats.get('infrared_uses', 0)
+                if channel_stats.get('trigger_lock_until', 0) > now and channel_stats.get('trigger_lock_uses', 0) > 0:
+                    channel_stats['trigger_lock_uses'] = max(0, channel_stats.get('trigger_lock_uses', 0) - 1)
+                    remaining_uses = channel_stats.get('trigger_lock_uses', 0)
                     remaining_color = 'red' if remaining_uses == 0 else 'green'
-                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLICK*', 'red', bold=True)} Trigger locked. {self.colorize(f'[{remaining_uses} remaining]', remaining_color)}"))
+                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLICK*', 'red', bold=True)} Safety locked. {self.colorize(f'[{remaining_uses} remaining]', remaining_color)}"))
                     if self.data_storage == 'sql' and self.db_backend:
                         self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                     else:
@@ -1686,7 +1688,7 @@ shop_extra_magazine = 400
                     del self.active_ducks[channel_key]
                 # Quietly unconfiscate all on this channel
                 self.unconfiscate_confiscated_in_channel(channel, network)
-            channel_stats['last_duck_time'] = datetime.fromtimestamp(time.time())  # Record when duck was shot
+            channel_stats['last_duck_time'] = time.time()  # Record when duck was shot
             if duck_killed:
                 # Only record when duck is actually killed
                 old_count = channel_stats['ducks_shot']
@@ -1983,8 +1985,10 @@ shop_extra_magazine = 400
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])  # Refund XP
                 elif item_id == 2:  # Extra magazine
                     mags_max = channel_stats.get('magazines_max', 2)
-                    if channel_stats['magazines'] < mags_max:
-                        channel_stats['magazines'] = min(mags_max, channel_stats['magazines'] + 1)
+                    current_mags = channel_stats['magazines']
+                    self.log_action(f"DEBUG: Magazine purchase - current_mags={current_mags}, mags_max={mags_max}")
+                    if current_mags < mags_max:
+                        channel_stats['magazines'] = min(mags_max, current_mags + 1)
                         await self.send_message(network, channel, self.pm(user, f"You just added an extra magazine. {self.colorize(f'[-{cost} XP]', 'red')} | Magazines: {channel_stats['magazines']}/{mags_max}"))
                     else:
                         await self.send_message(network, channel, self.pm(user, f"You already have the maximum magazines."))
@@ -2142,15 +2146,15 @@ shop_extra_magazine = 400
                     now = time.time()
                     duration = 24 * 3600
                     # Disallow purchase if active and has uses remaining
-                    if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
-                        await self.send_notice(network, user, "Trigger Lock already active. Use it up before buying more.")
-                        self.safe_xp_operation(channel_stats, 'add', item['cost'])
+                    if channel_stats.get('trigger_lock_until', 0) > now and channel_stats.get('trigger_lock_uses', 0) > 0:
+                        await self.send_notice(network, user, "Safety Lock already active. Use it up before buying more.")
+                        self.safe_xp_operation(channel_stats, 'subtract', item['cost'])
                     else:
                         new_until = now + duration
-                        channel_stats['infrared_until'] = new_until
-                        channel_stats['infrared_uses'] = 6
+                        channel_stats['trigger_lock_until'] = new_until
+                        channel_stats['trigger_lock_uses'] = 6
                         hours = duration // 3600
-                        await self.send_message(network, channel, self.pm(user, f"Trigger Lock enabled for {hours}h00m. Trigger lock has 6 uses. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                        await self.send_message(network, channel, self.pm(user, f"Safety Lock enabled for {hours}h00m. Safety lock has 6 uses. {self.colorize(f'[-{cost} XP]', 'red')}"))
                 elif item_id == 9:  # Silencer: 24h protection against scaring ducks
                     now = time.time()
                     duration = 24 * 3600
@@ -2291,12 +2295,19 @@ shop_extra_magazine = 400
         current_time = time.time()
         last_duck_time = channel_stats.get('last_duck_time', 0)
         
+        # Handle different data types for last_duck_time
         if isinstance(last_duck_time, str):
             # Convert timestamp string to float if needed
             try:
                 last_duck_time = float(last_duck_time)
             except (ValueError, TypeError):
                 last_duck_time = 0
+        elif isinstance(last_duck_time, datetime):
+            # Convert datetime object to Unix timestamp
+            last_duck_time = last_duck_time.timestamp()
+        elif not isinstance(last_duck_time, (int, float)):
+            # Handle any other unexpected types
+            last_duck_time = 0
         
         time_diff = current_time - last_duck_time
         
@@ -2582,6 +2593,13 @@ shop_extra_magazine = 400
             # Note: This is a global command, so we can't part from a specific network
             # For now, just log the part request
             self.log_action(f"Part command received for {channel} from {user}")
+        elif command == "say" and len(args) >= 2:
+            target_channel = args[0]
+            message = ' '.join(args[1:])  # Join all remaining args as the message
+            # Send the message to the target channel on the same network
+            await self.send_message(network, target_channel, message)
+            self.log_action(f"Owner {user} made bot say to {target_channel}: {message}")
+            await self.send_notice(network, user, f"Sent message to {target_channel}: {message}")
         elif command == "nextduck":
             # Owner-only: report next scheduled spawn for this channel
             now = time.time()
@@ -2880,14 +2898,14 @@ shop_extra_magazine = 400
                 channel_stats['sunglasses_until'] = float(now + day)
                 await say("By searching the bushes, you find sunglasses! You're protected against bedazzlement for 24h.")
         elif choice == "infrared":
-            if channel_stats.get('infrared_until', 0) > now and channel_stats.get('infrared_uses', 0) > 0:
+            if channel_stats.get('trigger_lock_until', 0) > now and channel_stats.get('trigger_lock_uses', 0) > 0:
                 cost = int(self.config.get('DEFAULT', 'shop_infrared_detector', fallback=15))
                 self.safe_xp_operation(channel_stats, 'add', cost)
-                await say(f"You find a Trigger Lock, but yours is still active. [+{cost} xp]")
+                await say(f"You find a Safety Lock, but yours is still active. [+{cost} xp]")
             else:
-                channel_stats['infrared_until'] = float(now + day)
-                channel_stats['infrared_uses'] = max(int(channel_stats.get('infrared_uses', 0)), 6)
-                await say("By searching the bushes, you find a Trigger Lock! Trigger locks when no duck (6 uses, 24h).")
+                channel_stats['trigger_lock_until'] = float(now + day)
+                channel_stats['trigger_lock_uses'] = max(int(channel_stats.get('trigger_lock_uses', 0)), 6)
+                await say("By searching the bushes, you find a Safety Lock! Safety locks when no duck (6 uses, 24h).")
         elif choice == "wallet_150xp":
             xp = 150
             self.safe_xp_operation(channel_stats, 'add', xp)
@@ -2948,7 +2966,7 @@ shop_extra_magazine = 400
         
         self.log_action(f"Private command: {command}, args: {args}")
         
-        if command in ["add", "reload", "restart", "join", "part", "clear", "restore", "backups"]:
+        if command in ["add", "reload", "restart", "join", "part", "clear", "restore", "backups", "say"]:
             self.log_action(f"Calling handle_owner_command for {command}")
             await self.handle_owner_command(user, command, args, network)
     
@@ -3261,10 +3279,10 @@ shop_extra_magazine = 400
             if float(stats.get('ducks_detector_until', 0)) > now:
                 items.append(self.colorize(f"[ducks detector {fmt_dur(stats['ducks_detector_until'])}]", 'green'))
             
-            infrared_until = float(stats.get('infrared_until', 0))
-            if infrared_until > now:
-                ir_uses = stats.get('infrared_uses', 0)
-                items.append(self.colorize(f"[trigger lock {fmt_dur(infrared_until)} ({ir_uses} uses)]", 'green'))
+            trigger_lock_until = float(stats.get('trigger_lock_until', 0))
+            if trigger_lock_until > now:
+                trigger_lock_uses = stats.get('trigger_lock_uses', 0)
+                items.append(self.colorize(f"[safety lock {fmt_dur(trigger_lock_until)} ({trigger_lock_uses} uses)]", 'green'))
             
             if stats.get('sight_next_shot', False):
                 items.append(self.colorize("[sight]", 'green'))
