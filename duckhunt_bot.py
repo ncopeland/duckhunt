@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build55
+Duck Hunt IRC Bot v1.0_build64
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -165,8 +165,8 @@ class SQLBackend:
             'trigger_lock_uses', 'grease_until', 'silencer_until', 'sunglasses_until',
             'ducks_detector_until', 'mirror_until', 'sand_until', 'soaked_until',
             'life_insurance_until', 'liability_insurance_until', 'mag_upgrade_level',
-            'mag_capacity_level', 'magazine_capacity', 'magazines_max', 'infrared_until',
-            'infrared_uses', 'clover_until', 'clover_bonus', 'brush_until', 'sight_next_shot'
+            'mag_capacity_level', 'magazine_capacity', 'magazines_max',
+            'clover_until', 'clover_bonus', 'brush_until', 'sight_next_shot'
         }
         
         # Build dynamic update query - only include valid fields
@@ -442,7 +442,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build62"
+        self.version = "1.0_build64"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-language support
@@ -2265,17 +2265,27 @@ shop_extra_magazine = 400
         channel_stats = self.get_channel_stats(user, channel, network)
         
         # Check if there's currently an active duck
-        norm_channel = self.normalize_channel(channel)
-        if norm_channel in self.active_ducks:
+        channel_key = self.get_network_channel_key(network, channel)
+        if channel_key in self.active_ducks:
             await self.send_message(network, channel, f"{user} > There is currently a duck in {channel}.")
             return
         
-        if norm_channel not in self.channel_last_duck_time:
+        # Check if any ducks have been killed in this channel
+        if not channel_stats.get('last_duck_time') or channel_stats.get('ducks_shot', 0) == 0:
             await self.send_message(network, channel, f"{user} > No ducks have been killed in {channel} yet.")
             return
         
         current_time = time.time()
-        time_diff = current_time - self.channel_last_duck_time[norm_channel]
+        last_duck_time = channel_stats.get('last_duck_time', 0)
+        
+        if isinstance(last_duck_time, str):
+            # Convert timestamp string to float if needed
+            try:
+                last_duck_time = float(last_duck_time)
+            except (ValueError, TypeError):
+                last_duck_time = 0
+        
+        time_diff = current_time - last_duck_time
         
         hours = int(time_diff // 3600)
         minutes = int((time_diff % 3600) // 60)

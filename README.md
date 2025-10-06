@@ -1,8 +1,26 @@
-# Duck Hunt IRC Bot v1.0_build62
+# Duck Hunt IRC Bot v1.0_build64
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build64
+- **Bug Fix**: Fixed `!lastduck` command showing incorrect data
+  - `!lastduck` was using in-memory `channel_last_duck_time` dictionary instead of database
+  - Now properly reads `last_duck_time` and `ducks_shot` from database
+  - Duck kill count and timing now consistent between `!bang` and `!lastduck` commands
+  - Fixes issue where `!lastduck` showed "No ducks killed" despite kills being recorded
+
+### v1.0_build63
+- **Database Schema Fix**: Added missing shop item columns
+  - Added `clover_until`, `clover_bonus` for four-leaf clover (item #10)
+  - Added `brush_until` for gun brush (item #13)
+  - Added `sight_next_shot` for sight attachment (item #7)
+  - Note: Trigger Lock (item #8) uses `trigger_lock_until`, `trigger_lock_uses` (already existed)
+  - All 23 shop items now have complete database support
+  - Shop item purchases now persist correctly in SQL backend
+  - Migration script provided in `migrations/add_shop_items_columns.sql`
+  - Schema audit document created: `SCHEMA_AUDIT.md`
 
 ### v1.0_build62
 - **Critical Fix**: Fixed ammo persistence when hitting golden ducks
