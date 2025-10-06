@@ -442,7 +442,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build60"
+        self.version = "1.0_build62"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-language support
@@ -976,6 +976,15 @@ shop_extra_magazine = 400
     
     def get_channel_stats(self, user, channel, network: NetworkConnection = None):
         """Get or create channel-specific stats for a player"""
+        # For SQL backend, load fresh from database every time
+        if self.data_storage == 'sql' and self.db_backend and network:
+            stats = self.db_backend.get_channel_stats(user, network.name, channel)
+            if stats:
+                return stats
+            # If no stats found, create default and return
+            return self.db_backend.get_channel_stats(user, network.name, channel)
+        
+        # For JSON backend, use in-memory player data
         player = self.get_player(user)
         
         # Use network-prefixed key if network is provided
@@ -1661,6 +1670,11 @@ shop_extra_magazine = 400
                 remaining = max(0, target_duck['health'])
                 hit_msg = f"{self.colorize('*BANG*', 'red', bold=True)} You hit the duck! {self.colorize('[GOLDEN DUCK DETECTED]', 'yellow', bold=True)} {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"
                 await self.send_message(network, channel, self.pm(user, hit_msg))
+                # Save ammo consumption
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+                else:
+                    self.save_player_data()
                 return
             
             # Remove if dead
@@ -1885,7 +1899,9 @@ shop_extra_magazine = 400
         
         # Save changes to database (only save fields that are persisted, not computed)
         if self.data_storage == 'sql' and self.db_backend:
-            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+            filtered_stats = self._filter_computed_stats(channel_stats)
+            self.log_action(f"RELOAD SAVE DEBUG: user={user}, magazines={filtered_stats.get('magazines')}, ammo={filtered_stats.get('ammo')}")
+            self.db_backend.update_channel_stats(user, network.name, channel, filtered_stats)
         else:
             self.save_player_data()
     
