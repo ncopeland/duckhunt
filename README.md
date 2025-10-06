@@ -1,8 +1,14 @@
-# Duck Hunt IRC Bot v1.0_build59
+# Duck Hunt IRC Bot v1.0_build60
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build60
+- **Bug Fix**: Fixed Undernet MOTD detection
+  - Added handling for IRC 422 (MOTD File is missing) response
+  - Undernet now connects immediately instead of waiting 180 seconds for timeout
+  - Changed Undernet server to chicago.il.us.undernet.org for better latency
 
 ### v1.0_build59
 - **Bug Fix**: Fixed misses not saving ammo consumption

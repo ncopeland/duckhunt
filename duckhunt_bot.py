@@ -442,7 +442,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build59"
+        self.version = "1.0_build60"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-language support
@@ -2582,6 +2582,12 @@ shop_extra_magazine = 400
         # Handle MOTD end (376 message) - now we can complete registration
         if "376" in data and ("End of /MOTD command" in data or "End of message of the day" in data):
             self.log_action(f"MOTD complete for {network.name}, completing registration")
+            await self.complete_registration(network)
+            return
+        
+        # Handle MOTD missing (422 message) - Undernet sends this instead of 376
+        if "422" in data and "MOTD File is missing" in data:
+            self.log_action(f"MOTD missing (422) for {network.name}, completing registration")
             await self.complete_registration(network)
             return
         
