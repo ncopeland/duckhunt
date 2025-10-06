@@ -1,15 +1,18 @@
-# Duck Hunt IRC Bot v1.0_build57
+# Duck Hunt IRC Bot v1.0_build58
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
 
+### v1.0_build58
+- **Critical Bug Fix #3**: Fixed stats not saving to SQL database at all
+  - Corrected `_filter_computed_stats()` to only filter penalty/reliability fields
+  - `magazine_capacity` and `magazines_max` are persistent upgrade fields and now save correctly
+  - All stat changes (ammo, magazines, XP, etc.) now properly persist to database
+  - Database timestamps now update correctly after each action
+
 ### v1.0_build57
-- **Critical Bug Fix #2**: Fixed computed stats overwriting persistent stats in SQL database
-  - `magazine_capacity` and `magazines_max` are now properly recognized as computed fields
-  - Created `_filter_computed_stats()` helper to exclude computed fields from database saves
-  - Magazine/ammo counts now correctly persist after reload and other actions
-  - Fixes issue where `!duckstats` showed max magazines instead of current count
+- **Bug Fix Attempt**: Created filtering system for computed stats (had incorrect field list)
 
 ### v1.0_build56
 - **Critical Bug Fix**: Fixed magazine/ammo stats not saving to SQL database

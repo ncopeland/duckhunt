@@ -442,7 +442,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build57"
+        self.version = "1.0_build58"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-language support
@@ -1101,8 +1101,7 @@ shop_extra_magazine = 400
     def _filter_computed_stats(self, stats_dict):
         """Remove computed fields that shouldn't be persisted to database"""
         return {k: v for k, v in stats_dict.items() if k not in [
-            'magazine_capacity', 'magazines_max', 'miss_penalty', 'wild_penalty', 
-            'accident_penalty', 'reliability_pct'
+            'miss_penalty', 'wild_penalty', 'accident_penalty', 'reliability_pct'
         ]}
     
     def update_stats_in_backend(self, user, channel, network, stats_dict):
