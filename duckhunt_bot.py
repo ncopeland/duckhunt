@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build66
+Duck Hunt IRC Bot v1.0_build67
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -442,7 +442,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build66"
+        self.version = "1.0_build67"
         self.ducks_lock = asyncio.Lock()
         
         # Multi-language support
@@ -2069,6 +2069,9 @@ shop_extra_magazine = 400
                         else:
                             tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
                             await self.send_message(network, channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                            # Save target's mirror status to database
+                            if self.data_storage == 'sql' and self.db_backend:
+                                self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 15:  # Handful of sand: victim reliability worse for 1h (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 15 <nick>")
@@ -2078,6 +2081,9 @@ shop_extra_magazine = 400
                         tstats = self.get_channel_stats(target, channel, network)
                         tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 3600)
                         await self.send_message(network, channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                        # Save target's sand status to database
+                        if self.data_storage == 'sql' and self.db_backend:
+                            self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 16:  # Water bucket: soak target for 1h (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 16 <nick>")
@@ -2087,6 +2093,9 @@ shop_extra_magazine = 400
                         tstats = self.get_channel_stats(target, channel, network)
                         tstats['soaked_until'] = max(tstats.get('soaked_until', 0), time.time() + 3600)
                         await self.send_message(network, channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                        # Save target's soaked status to database
+                        if self.data_storage == 'sql' and self.db_backend:
+                            self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 17:  # Sabotage: jam target immediately (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 17 <nick>")
@@ -2096,6 +2105,9 @@ shop_extra_magazine = 400
                         tstats = self.get_channel_stats(target, channel, network)
                         tstats['jammed'] = True
                         await self.send_message(network, channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                        # Save target's jammed status to database
+                        if self.data_storage == 'sql' and self.db_backend:
+                            self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 18:  # Life insurance: protect against confiscation for 24h
                     channel_stats['life_insurance_until'] = max(float(channel_stats.get('life_insurance_until', 0)), float(time.time() + 24*3600))
                     await self.send_message(network, channel, self.pm(user, f"You purchase life insurance. Confiscations will be prevented for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))

@@ -1,8 +1,17 @@
-# Duck Hunt IRC Bot v1.0_build66
+# Duck Hunt IRC Bot v1.0_build67
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build67
+- **Bug Fix**: Fixed shop items that affect other players not saving to database
+  - Fixed water bucket (item 16): `soaked_until` now saves to database
+  - Fixed sabotage (item 17): `jammed` status now saves to database  
+  - Fixed mirror (item 14): `mirror_until` now saves to database
+  - Fixed sand (item 15): `sand_until` now saves to database
+  - Target player effects now persist correctly across bot restarts
+  - All shop items that modify other players now work properly
 
 ### v1.0_build66
 - **Naming Fix**: Completed renaming "Infrared detector" to "Trigger Lock"
