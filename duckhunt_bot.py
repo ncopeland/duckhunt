@@ -113,6 +113,8 @@ class SQLBackend:
                 return True
         except Error as e:
             print(f"SQL Error: {e}")
+            print(f"SQL Query: {query}")
+            print(f"SQL Params: {params}")
             return None
     
     def get_player_id(self, username):
@@ -154,8 +156,12 @@ class SQLBackend:
     
     def update_channel_stats(self, username, network_name, channel_name, stats_dict):
         """Update channel stats for a player"""
+        print(f"DEBUG: update_channel_stats called for {username} in {network_name}:{channel_name}")
+        print(f"DEBUG: stats_dict keys: {list(stats_dict.keys())}")
         player_id = self.get_player_id(username)
+        print(f"DEBUG: player_id: {player_id}")
         if not player_id:
+            print(f"ERROR: No player_id found for {username}")
             return False
         
         # Valid fields that exist in the SQL schema
@@ -178,6 +184,10 @@ class SQLBackend:
         for key, value in stats_dict.items():
             if key in valid_fields:
                 set_clauses.append(f"{key} = %s")
+                # Convert Unix timestamp to DATETIME string for last_duck_time
+                if key == 'last_duck_time' and isinstance(value, (int, float)):
+                    from datetime import datetime
+                    value = datetime.fromtimestamp(value).strftime('%Y-%m-%d %H:%M:%S')
                 params.append(value)
         
         if not set_clauses:
@@ -189,7 +199,11 @@ class SQLBackend:
                     SET {', '.join(set_clauses)}
                     WHERE player_id = %s AND network_name = %s AND channel_name = %s"""
         
-        return self.execute_query(query, params)
+        print(f"DEBUG: SQL Query: {query}")
+        print(f"DEBUG: SQL Params: {params}")
+        result = self.execute_query(query, params)
+        print(f"DEBUG: execute_query result: {result}")
+        return result
     
     def get_all_players(self):
         """Get all players with their channel stats"""
@@ -1478,6 +1492,7 @@ shop_extra_magazine = 400
     async def handle_bang(self, user, channel, network: NetworkConnection):
         """Handle !bang command"""
         print(f"DEBUG: handle_bang called for {user} in {network.name}:{channel}")
+        self.log_action(f"DEBUG: handle_bang called for {user} in {network.name}:{channel}")
         if not self.check_authentication(user):
             await self.send_message(network, channel, self.pm(user, "You must be authenticated to play."))
             return
@@ -1761,14 +1776,20 @@ shop_extra_magazine = 400
         # Save changes to database
         try:
             print(f"DEBUG: About to save database for {user} in {network.name}:{channel} - data_storage={self.data_storage}, db_backend={self.db_backend is not None}")
+            self.log_action(f"DEBUG: About to save database for {user} in {network.name}:{channel} - data_storage={self.data_storage}, db_backend={self.db_backend is not None}")
             if self.data_storage == 'sql' and self.db_backend:
                 filtered_stats = self._filter_computed_stats(channel_stats)
                 print(f"DEBUG: Updating database for {user} in {network.name}:{channel} - ducks_shot={filtered_stats.get('ducks_shot', 'N/A')}")
+                self.log_action(f"DEBUG: Updating database for {user} in {network.name}:{channel} - ducks_shot={filtered_stats.get('ducks_shot', 'N/A')}")
                 result = self.db_backend.update_channel_stats(user, network.name, channel, filtered_stats)
+                print(f"DEBUG: Database update result: {result}")
+                self.log_action(f"DEBUG: Database update result: {result}")
                 if not result:
                     print(f"ERROR: Database update failed for {user} in {network.name}:{channel}")
+                    self.log_action(f"ERROR: Database update failed for {user} in {network.name}:{channel}")
                 else:
                     print(f"DEBUG: Database update successful for {user} in {network.name}:{channel}")
+                    self.log_action(f"DEBUG: Database update successful for {user} in {network.name}:{channel}")
             else:
                 print(f"DEBUG: Using JSON backend for {user} in {network.name}:{channel}")
                 self.save_player_data()
