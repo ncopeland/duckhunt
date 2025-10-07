@@ -1477,6 +1477,7 @@ shop_extra_magazine = 400
     
     async def handle_bang(self, user, channel, network: NetworkConnection):
         """Handle !bang command"""
+        print(f"DEBUG: handle_bang called for {user} in {network.name}:{channel}")
         if not self.check_authentication(user):
             await self.send_message(network, channel, self.pm(user, "You must be authenticated to play."))
             return
@@ -1748,14 +1749,15 @@ shop_extra_magazine = 400
                 remaining = max(0, target_duck['health'])
                 if target_duck['golden']:
                     await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"))
-            # Announce promotion/demotion if level changed (any XP change path)
-            if xp_gain != 0:
-                await self.check_level_change(user, channel, channel_stats, prev_xp, network)
-            
-            # Random weighted loot drop (10% chance) on kill only
-            if duck_killed and random.random() < 0.10:
-                await self.apply_weighted_loot(user, channel, channel_stats, network)
-            
+        
+        # Announce promotion/demotion if level changed (any XP change path)
+        if xp_gain != 0:
+            await self.check_level_change(user, channel, channel_stats, prev_xp, network)
+        
+        # Random weighted loot drop (10% chance) on kill only
+        if duck_killed and random.random() < 0.10:
+            await self.apply_weighted_loot(user, channel, channel_stats, network)
+        
         # Save changes to database
         try:
             print(f"DEBUG: About to save database for {user} in {network.name}:{channel} - data_storage={self.data_storage}, db_backend={self.db_backend is not None}")
