@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build70
+Duck Hunt IRC Bot v1.0_build71
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -2775,6 +2775,20 @@ shop_extra_magazine = 400
             await self.send_message(network, target_channel, message)
             self.log_action(f"Owner {user} made bot say to {target_channel}: {message}")
             await self.send_notice(network, user, f"Sent message to {target_channel}: {message}")
+        elif command == "op" and len(args) >= 2:
+            target_channel = args[0]
+            target_user = args[1]
+            # Send MODE command to give +o to the target user
+            await self.send_network(network, f"MODE {target_channel} +o {target_user}")
+            self.log_action(f"Owner {user} opped {target_user} in {target_channel}")
+            await self.send_notice(network, user, f"Opped {target_user} in {target_channel}")
+        elif command == "deop" and len(args) >= 2:
+            target_channel = args[0]
+            target_user = args[1]
+            # Send MODE command to remove +o from the target user
+            await self.send_network(network, f"MODE {target_channel} -o {target_user}")
+            self.log_action(f"Owner {user} deopped {target_user} in {target_channel}")
+            await self.send_notice(network, user, f"Deopped {target_user} in {target_channel}")
         elif command == "nextduck":
             # Admin-only: report next scheduled spawn for this channel
             if not self.is_admin(user, network) and not self.is_owner(user, network):
