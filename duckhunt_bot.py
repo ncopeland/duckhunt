@@ -1768,7 +1768,12 @@ shop_extra_magazine = 400
         
         # Save changes to database
         if self.data_storage == 'sql' and self.db_backend:
-            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+            try:
+                result = self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+                if not result:
+                    print(f"ERROR: Database update failed for {user} in {network.name}:{channel}")
+            except Exception as e:
+                print(f"ERROR: Database update exception for {user} in {network.name}:{channel}: {e}")
         else:
             self.save_player_data()
     
