@@ -1,8 +1,14 @@
-# Duck Hunt IRC Bot v1.0_build68
+# Duck Hunt IRC Bot v1.0_build69
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build69
+- **Bug Fix**: Fixed water bucket (shop item 16) duplicate soaking prevention
+  - Now checks if target is already soaked before applying effect
+  - Refunds XP if target is already soaked (prevents waste)
+  - Maintains proper soaked duration stacking behavior
 
 ### v1.0_build68
 - **New Feature**: Duck resistance mechanics for !bef command
