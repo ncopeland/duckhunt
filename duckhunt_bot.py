@@ -1748,18 +1748,18 @@ shop_extra_magazine = 400
                 remaining = max(0, target_duck['health'])
                 if target_duck['golden']:
                     await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"))
-        # Announce promotion/demotion if level changed (any XP change path)
-        if xp_gain != 0:
-            await self.check_level_change(user, channel, channel_stats, prev_xp, network)
-        
-        # Random weighted loot drop (10% chance) on kill only
-        if duck_killed and random.random() < 0.10:
-            await self.apply_weighted_loot(user, channel, channel_stats, network)
-        
+            # Announce promotion/demotion if level changed (any XP change path)
+            if xp_gain != 0:
+                await self.check_level_change(user, channel, channel_stats, prev_xp, network)
+            
+            # Random weighted loot drop (10% chance) on kill only
+            if duck_killed and random.random() < 0.10:
+                await self.apply_weighted_loot(user, channel, channel_stats, network)
+            
         # Save changes to database
-        print(f"DEBUG: About to save database for {user} in {network.name}:{channel} - data_storage={self.data_storage}, db_backend={self.db_backend is not None}")
-        if self.data_storage == 'sql' and self.db_backend:
-            try:
+        try:
+            print(f"DEBUG: About to save database for {user} in {network.name}:{channel} - data_storage={self.data_storage}, db_backend={self.db_backend is not None}")
+            if self.data_storage == 'sql' and self.db_backend:
                 filtered_stats = self._filter_computed_stats(channel_stats)
                 print(f"DEBUG: Updating database for {user} in {network.name}:{channel} - ducks_shot={filtered_stats.get('ducks_shot', 'N/A')}")
                 result = self.db_backend.update_channel_stats(user, network.name, channel, filtered_stats)
@@ -1767,11 +1767,13 @@ shop_extra_magazine = 400
                     print(f"ERROR: Database update failed for {user} in {network.name}:{channel}")
                 else:
                     print(f"DEBUG: Database update successful for {user} in {network.name}:{channel}")
-            except Exception as e:
-                print(f"ERROR: Database update exception for {user} in {network.name}:{channel}: {e}")
-        else:
-            print(f"DEBUG: Using JSON backend for {user} in {network.name}:{channel}")
-            self.save_player_data()
+            else:
+                print(f"DEBUG: Using JSON backend for {user} in {network.name}:{channel}")
+                self.save_player_data()
+        except Exception as e:
+            print(f"CRITICAL ERROR in database save for {user} in {network.name}:{channel}: {e}")
+            import traceback
+            traceback.print_exc()
     
     async def handle_bef(self, user, channel, network: NetworkConnection):
         """Handle !bef (befriend) command"""
