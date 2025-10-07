@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build69
+Duck Hunt IRC Bot v1.0_build70
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -2153,58 +2153,82 @@ shop_extra_magazine = 400
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
-                        tstats = self.get_channel_stats(target, channel, network)
-                        # If target has sunglasses active, mirror is countered
-                        if tstats.get('sunglasses_until', 0) > time.time():
-                            await self.send_message(network, channel, self.pm(user, f"{target} is wearing sunglasses. The mirror has no effect."))
+                        # Check if target user exists in channel
+                        users_in_channel = network.channels.get(channel, set())
+                        if target.lower() not in [u.lower() for u in users_in_channel]:
+                            await self.send_notice(network, user, f"User '{target}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
                             self.safe_xp_operation(channel_stats, 'add', item['cost'])
                         else:
-                            tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
-                            await self.send_message(network, channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                            # Save target's mirror status to database
-                            if self.data_storage == 'sql' and self.db_backend:
-                                self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
+                            tstats = self.get_channel_stats(target, channel, network)
+                            # If target has sunglasses active, mirror is countered
+                            if tstats.get('sunglasses_until', 0) > time.time():
+                                await self.send_message(network, channel, self.pm(user, f"{target} is wearing sunglasses. The mirror has no effect."))
+                                self.safe_xp_operation(channel_stats, 'add', item['cost'])
+                            else:
+                                tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
+                                await self.send_message(network, channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                                # Save target's mirror status to database
+                                if self.data_storage == 'sql' and self.db_backend:
+                                    self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 15:  # Handful of sand: victim reliability worse for 1h (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 15 <nick>")
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
-                        tstats = self.get_channel_stats(target, channel, network)
-                        tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 3600)
-                        await self.send_message(network, channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                        # Save target's sand status to database
-                        if self.data_storage == 'sql' and self.db_backend:
-                            self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
+                        # Check if target user exists in channel
+                        users_in_channel = network.channels.get(channel, set())
+                        if target.lower() not in [u.lower() for u in users_in_channel]:
+                            await self.send_notice(network, user, f"User '{target}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
+                            self.safe_xp_operation(channel_stats, 'add', item['cost'])
+                        else:
+                            tstats = self.get_channel_stats(target, channel, network)
+                            tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 3600)
+                            await self.send_message(network, channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                            # Save target's sand status to database
+                            if self.data_storage == 'sql' and self.db_backend:
+                                self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 16:  # Water bucket: soak target for 1h (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 16 <nick>")
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
-                        tstats = self.get_channel_stats(target, channel, network)
-                        now = time.time()
-                        if tstats.get('soaked_until', 0) > now:
-                            await self.send_notice(network, user, f"{target} is already soaked. Refunding XP.")
+                        # Check if target user exists in channel
+                        users_in_channel = network.channels.get(channel, set())
+                        if target.lower() not in [u.lower() for u in users_in_channel]:
+                            await self.send_notice(network, user, f"User '{target}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
                             self.safe_xp_operation(channel_stats, 'add', item['cost'])
                         else:
-                            tstats['soaked_until'] = max(tstats.get('soaked_until', 0), now + 3600)
-                            await self.send_message(network, channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                            # Save target's soaked status to database
-                            if self.data_storage == 'sql' and self.db_backend:
-                                self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
+                            tstats = self.get_channel_stats(target, channel, network)
+                            now = time.time()
+                            if tstats.get('soaked_until', 0) > now:
+                                await self.send_notice(network, user, f"{target} is already soaked. Refunding XP.")
+                                self.safe_xp_operation(channel_stats, 'add', item['cost'])
+                            else:
+                                tstats['soaked_until'] = max(tstats.get('soaked_until', 0), now + 3600)
+                                await self.send_message(network, channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                                # Save target's soaked status to database
+                                if self.data_storage == 'sql' and self.db_backend:
+                                    self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 17:  # Sabotage: jam target immediately (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 17 <nick>")
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
-                        tstats = self.get_channel_stats(target, channel, network)
-                        tstats['jammed'] = True
-                        await self.send_message(network, channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                        # Save target's jammed status to database
-                        if self.data_storage == 'sql' and self.db_backend:
-                            self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
+                        # Check if target user exists in channel
+                        users_in_channel = network.channels.get(channel, set())
+                        if target.lower() not in [u.lower() for u in users_in_channel]:
+                            await self.send_notice(network, user, f"User '{target}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
+                            self.safe_xp_operation(channel_stats, 'add', item['cost'])
+                        else:
+                            tstats = self.get_channel_stats(target, channel, network)
+                            tstats['jammed'] = True
+                            await self.send_message(network, channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                            # Save target's jammed status to database
+                            if self.data_storage == 'sql' and self.db_backend:
+                                self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 18:  # Life insurance: protect against confiscation for 24h
                     channel_stats['life_insurance_until'] = max(float(channel_stats.get('life_insurance_until', 0)), float(time.time() + 24*3600))
                     await self.send_message(network, channel, self.pm(user, f"You purchase life insurance. Confiscations will be prevented for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
@@ -2376,6 +2400,13 @@ shop_extra_magazine = 400
             return
         
         target = args[0]
+        
+        # Check if target user exists in channel
+        users_in_channel = network.channels.get(channel, set())
+        if target.lower() not in [u.lower() for u in users_in_channel]:
+            await self.send_message(network, channel, f"User '{target}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
+            return
+        
         player = self.get_player(user)
         channel_stats = self.get_channel_stats(user, channel, network)
         
@@ -3314,6 +3345,13 @@ shop_extra_magazine = 400
         try:
             target_user = args[0] if args else user
             channel_key = f"{network.name}:{channel}"
+            
+            # Check if target user exists in channel (if targeting someone else)
+            if args and target_user != user:
+                users_in_channel = network.channels.get(channel, set())
+                if target_user.lower() not in [u.lower() for u in users_in_channel]:
+                    await self.send_message(network, channel, f"User '{target_user}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
+                    return
             
             # Get player stats
             if self.data_storage == 'sql' and self.db_backend:
