@@ -1672,26 +1672,16 @@ shop_extra_magazine = 400
                     remaining = max(0, target_duck['health'])
                     hit_msg = f"{self.colorize('*BANG*', 'red', bold=True)} You hit the duck! {self.colorize('[GOLDEN DUCK DETECTED]', 'yellow', bold=True)} {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"
                     await self.send_message(network, channel, self.pm(user, hit_msg))
-                    # If duck survived, show survival message and return
+                    # If duck survived, show survival message
                     if not duck_killed:
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"))
-                        # Save ammo consumption for hit
-                        if self.data_storage == 'sql' and self.db_backend:
-                            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
-                        else:
-                            self.save_player_data()
-                        return
+                        # Don't return early - continue to process the hit/kill logic
                 else:
                     # Already revealed golden duck - show survival message if not killed
                     if not duck_killed:
                         remaining = max(0, target_duck['health'])
                         await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"))
-                        # Save ammo consumption for hit
-                        if self.data_storage == 'sql' and self.db_backend:
-                            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
-                        else:
-                            self.save_player_data()
-                        return
+                        # Don't return early - continue to process the hit/kill logic
             
             # Remove if dead
             if duck_killed and channel_key in self.active_ducks:
@@ -1769,9 +1759,13 @@ shop_extra_magazine = 400
         # Save changes to database
         if self.data_storage == 'sql' and self.db_backend:
             try:
-                result = self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+                filtered_stats = self._filter_computed_stats(channel_stats)
+                print(f"DEBUG: Updating database for {user} in {network.name}:{channel} - ducks_shot={filtered_stats.get('ducks_shot', 'N/A')}")
+                result = self.db_backend.update_channel_stats(user, network.name, channel, filtered_stats)
                 if not result:
                     print(f"ERROR: Database update failed for {user} in {network.name}:{channel}")
+                else:
+                    print(f"DEBUG: Database update successful for {user} in {network.name}:{channel}")
             except Exception as e:
                 print(f"ERROR: Database update exception for {user} in {network.name}:{channel}: {e}")
         else:
