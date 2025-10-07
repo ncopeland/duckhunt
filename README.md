@@ -7,7 +7,7 @@ An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop sy
 ### v1.0_build68
 - **New Feature**: Duck resistance mechanics for !bef command
   - Ducks now have 1/20 chance to hiss ferociously on !bef miss
-  - Hissed ducks will thrash any player attempting !bef with -250 XP penalty
+  - Hissed ducks will also thrash any player attempting !bef with -250 XP penalty
   - Thrashing ducks fly away after attacking (prevents further interaction)
   - Added proper level demotion messages for all XP loss scenarios
 - **New Feature**: !egg command for veteran players
@@ -25,6 +25,10 @@ An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop sy
   - Cleaner format: shows only ammo and magazines in [Weapon] section
   - Status conditions now displayed as separate red indicators
   - Better visual separation between different stat categories
+- **Naming Update**: Renamed "Trigger Lock" to "Safety Lock" throughout
+  - Updated shop menu display and purchase messages
+  - Changed all references to use "Safety Lock" terminology
+  - Maintains consistency with IRC server filtering requirements
 
 ### v1.0_build67
 - **Bug Fix**: Fixed shop items that affect other players not saving to database
