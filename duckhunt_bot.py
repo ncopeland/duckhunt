@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build67
+Duck Hunt IRC Bot v1.0_build68
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -170,7 +170,8 @@ class SQLBackend:
             'ducks_detector_until', 'mirror_until', 'sand_until', 'soaked_until',
             'life_insurance_until', 'liability_insurance_until', 'mag_upgrade_level',
             'mag_capacity_level', 'magazine_capacity', 'magazines_max',
-            'clover_until', 'clover_bonus', 'brush_until', 'sight_next_shot'
+            'clover_until', 'clover_bonus', 'brush_until', 'sight_next_shot',
+            'egged', 'last_egg_time'
         }
         
         # Build dynamic update query - only include valid fields
@@ -1517,6 +1518,11 @@ shop_extra_magazine = 400
                     remaining_uses = channel_stats.get('trigger_lock_uses', 0)
                     remaining_color = 'red' if remaining_uses == 0 else 'green'
                     await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLICK*', 'red', bold=True)} Safety locked. {self.colorize(f'[{remaining_uses} remaining]', remaining_color)}"))
+                    
+                    # If uses reached 0, remove the safety lock completely
+                    if remaining_uses == 0:
+                        channel_stats['trigger_lock_until'] = 0
+                    
                     if self.data_storage == 'sql' and self.db_backend:
                         self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                     else:
@@ -1610,6 +1616,11 @@ shop_extra_magazine = 400
             if channel_stats.get('soaked_until', 0) > time.time():
                 await self.send_message(network, channel, self.pm(user, "You are soaked and cannot shoot. Use spare clothes or wait."))
                 return
+            
+            # Egged players cannot shoot
+            if channel_stats.get('egged', False):
+                await self.send_message(network, channel, self.pm(user, "You are covered in egg and cannot shoot. Use spare clothes to clean up."))
+                return
             if hit_roll > hit_chance:
                 channel_stats['misses'] += 1
                 # Random penalty (-1 to -5) on miss
@@ -1679,12 +1690,11 @@ shop_extra_magazine = 400
                     hit_msg = f"{self.colorize('*BANG*', 'red', bold=True)} You hit the duck! {self.colorize('[GOLDEN DUCK DETECTED]', 'yellow', bold=True)} {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"
                     await self.send_message(network, channel, self.pm(user, hit_msg))
                     # Don't return early - continue to process the hit/kill logic
-                else:
+                elif not duck_killed:
                     # Already revealed golden duck - show survival message if not killed
-                    if not duck_killed:
-                        remaining = max(0, target_duck['health'])
-                        await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"))
-                        # Don't return early - continue to process the hit/kill logic
+                    remaining = max(0, target_duck['health'])
+                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"))
+                    # Don't return early - continue to process the hit/kill logic
             
             # Remove if dead
             if duck_killed and channel_key in self.active_ducks:
@@ -1747,10 +1757,7 @@ shop_extra_magazine = 400
             if duck_killed:
                 sign = '+' if xp_gain > 0 else ''
                 await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)}  You shot down the duck in {reaction_time:.3f}s, which makes you a total of {channel_stats['ducks_shot']} ducks on {channel}. {self.colorize('\\_X< *KWAK*', 'red')} {self.colorize(f'[{sign}{xp_gain} xp]', 'green')}{item_display}"))
-            else:
-                remaining = max(0, target_duck['health'])
-                if target_duck['golden']:
-                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('*BANG*', 'red', bold=True)} The golden duck survived! {self.colorize('[', 'red')}{self.colorize('\\_O<', 'yellow')} {self.colorize('life', 'red')} {remaining}]"))
+            # Note: Golden duck survival messages are handled above in the golden duck hit logic
         
         # Announce promotion/demotion if level changed (any XP change path)
         if xp_gain != 0:
@@ -1790,8 +1797,13 @@ shop_extra_magazine = 400
                 self.log_action(f"No ducks to befriend in {channel} - active_ducks keys: {list(self.active_ducks.keys())}")
                 # Apply random penalty (-1 to -10) for befriending when no ducks are present
                 penalty = -random.randint(1, 10)
+                prev_xp = channel_stats['xp']
                 self.safe_xp_operation(channel_stats, 'subtract', -penalty)
                 await self.send_message(network, channel, self.pm(user, f"There are no ducks to befriend. {self.colorize(f'[{penalty} XP]', 'red')}"))
+                
+                # Check for level change after penalty
+                await self.check_level_change(user, channel, channel_stats, prev_xp, network)
+                
                 if self.data_storage == 'sql' and self.db_backend:
                     self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
@@ -1800,6 +1812,33 @@ shop_extra_magazine = 400
             
             # Get the active duck
             duck = self.active_ducks[channel_key][0]
+            
+            # Check if duck is hissed (hostile) - thrash penalty for anyone trying to befriend
+            if duck.get('hissed', False):
+                channel_stats['misses'] += 1
+                prev_xp = channel_stats['xp']
+                self.safe_xp_operation(channel_stats, 'subtract', 250)
+                await self.send_message(network, channel, f"{self.colorize(user, 'red')} - {self.colorize('*THRASH*', 'red', bold=True)} The duck gives you a serious thrashing that requires medical attention. {self.colorize('<(\'v\')>', 'yellow')} {self.colorize('[-250 XP]', 'red')}")
+                
+                # Remove the hissed duck after thrashing (it flies away)
+                if self.active_ducks[channel_key]:
+                    self.active_ducks[channel_key].pop(0)
+                if not self.active_ducks[channel_key]:
+                    del self.active_ducks[channel_key]
+                # Quietly unconfiscate all on this channel
+                self.unconfiscate_confiscated_in_channel(channel, network)
+                
+                # Send the duck flies away message
+                await self.send_message(network, channel, self.colorize("The duck flies away.     ·°'`'°-.,¸¸.·°'`", 'grey'))
+                
+                # Check for level change after thrash penalty
+                await self.check_level_change(user, channel, channel_stats, prev_xp, network)
+                
+                if self.data_storage == 'sql' and self.db_backend:
+                    self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+                else:
+                    self.save_player_data()
+                return
             
             # Accuracy-style check for befriending (duck might not notice)
             bef_roll = random.random()
@@ -1811,8 +1850,19 @@ shop_extra_magazine = 400
                 # Random penalty (-1 to -10) on failed befriend (duck distracted)
                 penalty = -random.randint(1, 10)
                 channel_stats['misses'] += 1
+                prev_xp = channel_stats['xp']
                 self.safe_xp_operation(channel_stats, 'subtract', -penalty)
-                await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'red', bold=True)} The duck seems distracted. Try again. {self.colorize(f'[{penalty} XP]', 'red')}"))
+                
+                # 1/20 chance for duck to hiss (become hostile)
+                if random.randint(1, 20) == 1:
+                    duck['hissed'] = True
+                    await self.send_message(network, channel, f"{self.colorize(user, 'red')} - {self.colorize('*HISS*', 'red', bold=True)} The duck hisses at you ferociously. Do not mess with this duck. {self.colorize(f'[{penalty} XP]', 'red')}")
+                else:
+                    await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'red', bold=True)} The duck seems distracted. Try again. {self.colorize(f'[{penalty} XP]', 'red')}"))
+                
+                # Check for level change after miss penalty
+                await self.check_level_change(user, channel, channel_stats, prev_xp, network)
+                
                 if self.data_storage == 'sql' and self.db_backend:
                     self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
                 else:
@@ -1837,8 +1887,11 @@ shop_extra_magazine = 400
                 await self.send_message(network, channel, self.pm(user, bef_msg))
                 return
             
-            # Remove the duck if fully befriended
+            # Remove the duck if fully befriended and handle XP rewards
             if bef_killed:
+                # Store duck info before removal
+                was_golden = duck['golden']
+                
                 # Remove FIFO
                 if self.active_ducks[channel_key]:
                     self.active_ducks[channel_key].pop(0)
@@ -1846,38 +1899,43 @@ shop_extra_magazine = 400
                     del self.active_ducks[channel_key]
                 # Quietly unconfiscate all on this channel
                 self.unconfiscate_confiscated_in_channel(channel, network)
-        
-        # Award XP for befriending when completed
-        if bef_killed:
-            # Base XP for befriending (golden vs regular)
-            base_xp = 50 if duck['golden'] else int(self.config.get('DEFAULT', 'default_xp', fallback=10))
-            # Four-leaf clover bonus if active
-            if channel_stats.get('clover_until', 0) > time.time():
-                xp_gained = base_xp + int(channel_stats.get('clover_bonus', 0))
+                
+                # Award XP for befriending when completed
+                # Base XP for befriending (golden vs regular)
+                base_xp = 50 if was_golden else int(self.config.get('DEFAULT', 'default_xp', fallback=10))
+                # Four-leaf clover bonus if active
+                if channel_stats.get('clover_until', 0) > time.time():
+                    xp_gained = base_xp + int(channel_stats.get('clover_bonus', 0))
+                else:
+                    xp_gained = base_xp
+                prev_xp = channel_stats['xp']
+                self.safe_xp_operation(channel_stats, 'add', xp_gained)
+                channel_stats['befriended_ducks'] += 1
+                response = f"{self.colorize('*QUAACK!*', 'red', bold=True)} "
+                if was_golden:
+                    response += "The GOLDEN DUCK"
+                else:
+                    response += "The DUCK"
+                response += f" was befriended! {self.colorize('\\_0<', 'yellow')} {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize(f'[+{xp_gained} xp]', 'green')}"
+                await self.send_message(network, channel, self.pm(user, response))
+                self.log_action(f"{user} befriended a {'golden ' if was_golden else ''}duck in {channel}")
+                await self.check_level_change(user, channel, channel_stats, prev_xp, network)
             else:
-                xp_gained = base_xp
-            prev_xp = channel_stats['xp']
-            self.safe_xp_operation(channel_stats, 'add', xp_gained)
-            channel_stats['befriended_ducks'] += 1
-            response = f"{self.colorize('*QUAACK!*', 'red', bold=True)} "
-            if duck['golden']:
-                response += "The GOLDEN DUCK"
-            else:
-                response += "The DUCK"
-            response += f" was befriended! {self.colorize('\\_0<', 'yellow')} {self.colorize(f'[BEFRIENDED DUCKS: {channel_stats['befriended_ducks']}]', 'green')} {self.colorize(f'[+{xp_gained} xp]', 'green')}"
-            await self.send_message(network, channel, self.pm(user, response))
-            self.log_action(f"{user} befriended a {'golden ' if duck['golden'] else ''}duck in {channel}")
-            await self.check_level_change(user, channel, channel_stats, prev_xp, network)
-        else:
-            remaining = max(0, duck['health'])
-            response = f"{self.colorize('FRIEND', 'red', bold=True)} You comfort the duck. {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('friend', 'red')} {remaining}]"
-            await self.send_message(network, channel, self.pm(user, response))
+                remaining = max(0, duck['health'])
+                response = f"{self.colorize('FRIEND', 'red', bold=True)} You comfort the duck. {self.colorize('[', 'red')}{self.colorize('\\_0<', 'yellow')} {self.colorize('friend', 'red')} {remaining}]"
+                await self.send_message(network, channel, self.pm(user, response))
         
-        # Save changes to database
+        # Save changes to database (moved inside lock to prevent race conditions)
         if self.data_storage == 'sql' and self.db_backend:
-            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+            try:
+                self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+            except Exception as e:
+                print(f"Database save error in handle_bef for {user}: {e}")
         else:
-            self.save_player_data()
+            try:
+                self.save_player_data()
+            except Exception as e:
+                print(f"Player data save error in handle_bef for {user}: {e}")
     
     async def handle_reload(self, user, channel, network: NetworkConnection):
         """Handle !reload command"""
@@ -2061,12 +2119,26 @@ shop_extra_magazine = 400
                     else:
                         channel_stats['sunglasses_until'] = float(now + 24*3600)
                         await self.send_message(network, channel, self.pm(user, f"You put on sunglasses for 24h. You're protected against mirror glare. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                elif item_id == 12:  # Spare clothes: clear soaked if present
-                    if channel_stats.get('soaked_until', 0) > time.time():
-                        channel_stats['soaked_until'] = 0
-                        await self.send_message(network, channel, self.pm(user, f"You change into spare clothes. You're no longer soaked. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                elif item_id == 12:  # Spare clothes: clear soaked and egged if present
+                    soaked = channel_stats.get('soaked_until', 0) > time.time()
+                    egged = channel_stats.get('egged', False)
+                    
+                    if soaked or egged:
+                        if soaked:
+                            channel_stats['soaked_until'] = 0
+                        if egged:
+                            channel_stats['egged'] = False
+                        
+                        status_msg = []
+                        if soaked:
+                            status_msg.append("soaked")
+                        if egged:
+                            status_msg.append("covered in egg")
+                        
+                        status_text = " and ".join(status_msg)
+                        await self.send_message(network, channel, self.pm(user, f"You change into spare clothes. You're no longer {status_text}. {self.colorize(f'[-{cost} XP]', 'red')}"))
                     else:
-                        await self.send_notice(network, user, "You're not soaked. Refunding XP.")
+                        await self.send_notice(network, user, "You're not soaked or covered in egg. Refunding XP.")
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])
                 elif item_id == 13:  # Brush for gun: unjam, clear sand, and small reliability buff for 24h
                     channel_stats['jammed'] = False
@@ -2287,6 +2359,57 @@ shop_extra_magazine = 400
                 available = self.lang.get_available_languages()
                 lang_list = ", ".join([f"{code}" for code in sorted(available.keys())])
                 await self.send_notice(network, user, f"Invalid language code '{new_lang}'. Available: {lang_list}")
+    
+    async def handle_egg(self, user, channel, args, network: NetworkConnection):
+        """Handle !egg command - throw egg at target player"""
+        if not self.check_authentication(user):
+            await self.send_message(network, channel, self.pm(user, "You must be authenticated to play."))
+            return
+        
+        if not args:
+            await self.send_message(network, channel, self.pm(user, "Usage: !egg <player>"))
+            return
+        
+        target = args[0]
+        player = self.get_player(user)
+        channel_stats = self.get_channel_stats(user, channel, network)
+        
+        # Check if player has befriended at least 50 ducks (easter egg unlock)
+        if channel_stats.get('befriended_ducks', 0) < 50:
+            # Don't respond at all - it's an easter egg!
+            return
+        
+        # Check 24h cooldown
+        now = time.time()
+        last_egg = channel_stats.get('last_egg_time', 0)
+        if last_egg > 0 and (now - last_egg) < (24 * 3600):
+            time_remaining = int((24 * 3600) - (now - last_egg))
+            hours = time_remaining // 3600
+            minutes = (time_remaining % 3600) // 60
+            seconds = time_remaining % 60
+            await self.send_message(network, channel, self.pm(user, f"You can !egg again in {hours:02d}:{minutes:02d}:{seconds:02d}."))
+            return
+        
+        # Check if target exists
+        if target not in self.players:
+            await self.send_message(network, channel, self.pm(user, f"Player '{target}' not found."))
+            return
+        
+        # Apply egged state to target
+        target_stats = self.get_channel_stats(target, channel, network)
+        target_stats['egged'] = True
+        
+        # Update last egg time for thrower
+        channel_stats['last_egg_time'] = now
+        
+        await self.send_message(network, channel, f"{self.colorize(user, 'red')} throws a duck egg at {self.colorize(target, 'red')}! {self.colorize(target, 'yellow')} is now covered in egg and needs to change clothes!")
+        
+        # Save changes to database
+        if self.data_storage == 'sql' and self.db_backend:
+            self.db_backend.update_channel_stats(user, network.name, channel, self._filter_computed_stats(channel_stats))
+            self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(target_stats))
+        else:
+            self.save_player_data()
     
     async def handle_lastduck(self, user, channel, network: NetworkConnection):
         """Handle !lastduck command"""
@@ -2780,6 +2903,8 @@ shop_extra_magazine = 400
             await self.handle_duckhelp(user, channel, network)
         elif command == "ducklang":
             await self.handle_ducklang(user, channel, args, network)
+        elif command == "egg":
+            await self.handle_egg(user, channel, args, network)
         elif command == "nextduck":
             # Admin-only, invoked in channel
             if not self.is_admin(user, network) and not self.is_owner(user, network):
@@ -3190,7 +3315,7 @@ shop_extra_magazine = 400
                 # SQL backend
                 stats = self.db_backend.get_channel_stats(target_user, network.name, channel)
                 
-                if not stats or stats.get('xp', 0) == 0:
+                if not stats:
                     await self.send_message(network, channel, f"No stats found for {target_user} in {channel}")
                     return
                 
@@ -3235,11 +3360,24 @@ shop_extra_magazine = 400
             karma_pct = 100.0 if total_actions == 0 else max(0.0, min(100.0, (total_good / total_actions) * 100.0))
             
             response = f"Hunting stats for {target_user} in {network.name}:{channel} : "
-            response += f"[Weapon] ammo: {ammo}/{mag_capacity} | mag.: {magazines}/{magazines_max} | jammed: {'yes' if stats.get('jammed', False) else 'no'} | confisc.: {'yes' if stats.get('confiscated', False) else 'no'} "
+            response += f"[Weapon] ammo: {ammo}/{mag_capacity} | mag.: {magazines}/{magazines_max} "
             response += f"[Profile] {xp:.0f} xp | lvl {level} | accuracy: {accuracy:.0f}% | karma: {karma_pct:.2f}% good hunter "
-            response += f"[Channel Stats] {ducks_shot} ducks (incl. {golden_ducks} golden) | best time: {best_time:.3f}s | avg react: {avg_reaction:.3f}s"
+            befriended_ducks = stats.get('befriended_ducks', 0)
+            response += f"[Channel Stats] {ducks_shot} ducks (incl. {golden_ducks} golden) | {befriended_ducks} befriended | best time: {best_time:.3f}s | avg react: {avg_reaction:.3f}s"
             
             await self.send_notice(network, user, response)
+            
+            # Check for status conditions and send red indicators at the end
+            status_messages = []
+            if bool(stats.get('jammed', False)):
+                status_messages.append(self.colorize('[Jammed]', 'red'))
+            if bool(stats.get('confiscated', False)):
+                status_messages.append(self.colorize('[Confiscated]', 'red'))
+            if bool(stats.get('egged', False)):
+                status_messages.append(self.colorize('[Egged]', 'red'))
+            
+            if status_messages:
+                await self.send_notice(network, user, f"{target_user} is {' '.join(status_messages)}")
             
             # Build items display
             items = []
@@ -3299,8 +3437,8 @@ shop_extra_magazine = 400
                 items.append(self.colorize(f"[ducks detector {fmt_dur(stats['ducks_detector_until'])}]", 'green'))
             
             trigger_lock_until = float(stats.get('trigger_lock_until', 0))
-            if trigger_lock_until > now:
-                trigger_lock_uses = stats.get('trigger_lock_uses', 0)
+            trigger_lock_uses = stats.get('trigger_lock_uses', 0)
+            if trigger_lock_until > now and trigger_lock_uses > 0:
                 items.append(self.colorize(f"[safety lock {fmt_dur(trigger_lock_until)} ({trigger_lock_uses} uses)]", 'green'))
             
             if stats.get('sight_next_shot', False):

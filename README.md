@@ -5,20 +5,15 @@ An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop sy
 ## Changelog
 
 ### v1.0_build68
-- **Critical Fix**: Fixed Trigger Lock (shop item 8) system completely
-  - Fixed field name mismatch between shop command and database schema
-  - Fixed shop command XP deduction bug (was adding instead of subtracting)
-  - Replaced 'trigger' with 'safety' in all messages to avoid IRC server filtering
-  - All Safety Lock functionality now works correctly across all networks
-- **Bug Fix**: Fixed !lastduck command crash
-  - Fixed datetime vs float type mismatch in timestamp calculations
-  - Added robust type handling for different data formats
-  - Command now works reliably without crashing the bot
-- **New Feature**: Added owner !say command
-  - Allows bot owner to make bot send messages to any channel
-  - Usage: `!say #channel message` (PRIVMSG only for security)
-  - Includes confirmation and logging for audit purposes
-- **Code Quality**: Improved error handling and type conversions throughout
+- **New Feature**: Enhanced !duckstats display with red status indicators
+  - Removed jammed/confiscated from main stats line for cleaner display
+  - Added red [Jammed], [Confiscated], and [Egged] indicators at end when active
+  - Status indicators only show when conditions are true (no false positives)
+  - Improved message length handling to prevent IRC crashes
+- **UI Improvement**: Streamlined weapon stats display
+  - Cleaner format: shows only ammo and magazines in [Weapon] section
+  - Status conditions now displayed as separate red indicators
+  - Better visual separation between different stat categories
 
 ### v1.0_build67
 - **Bug Fix**: Fixed shop items that affect other players not saving to database
