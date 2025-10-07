@@ -1,8 +1,14 @@
-# Duck Hunt IRC Bot v1.0_build71
+# Duck Hunt IRC Bot v1.0_build72
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build72
+- **UI Improvement**: Cleaned up user validation error messages
+  - Removed available users list from error messages for cleaner display
+  - Error messages now simply state "User 'X' is not in #channel"
+  - Applies to !duckstats, !egg, and shop commands (14, 15, 16, 17)
 
 ### v1.0_build71
 - **New Feature**: Added owner channel management commands

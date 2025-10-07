@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build71
+Duck Hunt IRC Bot v1.0_build72
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -2156,7 +2156,7 @@ shop_extra_magazine = 400
                         # Check if target user exists in channel
                         users_in_channel = network.channels.get(channel, set())
                         if target.lower() not in [u.lower() for u in users_in_channel]:
-                            await self.send_notice(network, user, f"User '{target}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
+                            await self.send_notice(network, user, f"User '{target}' is not in {channel}.")
                             self.safe_xp_operation(channel_stats, 'add', item['cost'])
                         else:
                             tstats = self.get_channel_stats(target, channel, network)
@@ -2179,7 +2179,7 @@ shop_extra_magazine = 400
                         # Check if target user exists in channel
                         users_in_channel = network.channels.get(channel, set())
                         if target.lower() not in [u.lower() for u in users_in_channel]:
-                            await self.send_notice(network, user, f"User '{target}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
+                            await self.send_notice(network, user, f"User '{target}' is not in {channel}.")
                             self.safe_xp_operation(channel_stats, 'add', item['cost'])
                         else:
                             tstats = self.get_channel_stats(target, channel, network)
@@ -2197,7 +2197,7 @@ shop_extra_magazine = 400
                         # Check if target user exists in channel
                         users_in_channel = network.channels.get(channel, set())
                         if target.lower() not in [u.lower() for u in users_in_channel]:
-                            await self.send_notice(network, user, f"User '{target}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
+                            await self.send_notice(network, user, f"User '{target}' is not in {channel}.")
                             self.safe_xp_operation(channel_stats, 'add', item['cost'])
                         else:
                             tstats = self.get_channel_stats(target, channel, network)
@@ -2220,7 +2220,7 @@ shop_extra_magazine = 400
                         # Check if target user exists in channel
                         users_in_channel = network.channels.get(channel, set())
                         if target.lower() not in [u.lower() for u in users_in_channel]:
-                            await self.send_notice(network, user, f"User '{target}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
+                            await self.send_notice(network, user, f"User '{target}' is not in {channel}.")
                             self.safe_xp_operation(channel_stats, 'add', item['cost'])
                         else:
                             tstats = self.get_channel_stats(target, channel, network)
@@ -2404,7 +2404,7 @@ shop_extra_magazine = 400
         # Check if target user exists in channel
         users_in_channel = network.channels.get(channel, set())
         if target.lower() not in [u.lower() for u in users_in_channel]:
-            await self.send_message(network, channel, f"User '{target}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
+            await self.send_message(network, channel, f"User '{target}' is not in {channel}.")
             return
         
         player = self.get_player(user)
@@ -3364,7 +3364,7 @@ shop_extra_magazine = 400
             if args and target_user != user:
                 users_in_channel = network.channels.get(channel, set())
                 if target_user.lower() not in [u.lower() for u in users_in_channel]:
-                    await self.send_message(network, channel, f"User '{target_user}' is not in {channel}. Available users: {', '.join(sorted(users_in_channel))[:200]}")
+                    await self.send_message(network, channel, f"User '{target_user}' is not in {channel}.")
                     return
             
             # Get player stats
