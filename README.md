@@ -5,6 +5,17 @@ An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop sy
 ## Changelog
 
 ### v1.0_build68
+- **New Feature**: Duck resistance mechanics for !bef command
+  - Ducks now have 1/20 chance to hiss ferociously on !bef miss
+  - Hissed ducks will thrash any player attempting !bef with -250 XP penalty
+  - Thrashing ducks fly away after attacking (prevents further interaction)
+  - Added proper level demotion messages for all XP loss scenarios
+- **New Feature**: !egg command for veteran players
+  - Unlocked after befriending 50 ducks (hidden "easter egg" feature)
+  - 24-hour cooldown per player, throws duck egg at target
+  - Egged state requires !shop 12 (spare clothes) to remove
+  - Egged players can still use !bef but not !bang (prevents gameplay lockout)
+  - Added egged status persistence to database schema
 - **New Feature**: Enhanced !duckstats display with red status indicators
   - Removed jammed/confiscated from main stats line for cleaner display
   - Added red [Jammed], [Confiscated], and [Egged] indicators at end when active
