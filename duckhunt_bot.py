@@ -1757,6 +1757,7 @@ shop_extra_magazine = 400
             await self.apply_weighted_loot(user, channel, channel_stats, network)
         
         # Save changes to database
+        print(f"DEBUG: About to save database for {user} in {network.name}:{channel} - data_storage={self.data_storage}, db_backend={self.db_backend is not None}")
         if self.data_storage == 'sql' and self.db_backend:
             try:
                 filtered_stats = self._filter_computed_stats(channel_stats)
@@ -1769,6 +1770,7 @@ shop_extra_magazine = 400
             except Exception as e:
                 print(f"ERROR: Database update exception for {user} in {network.name}:{channel}: {e}")
         else:
+            print(f"DEBUG: Using JSON backend for {user} in {network.name}:{channel}")
             self.save_player_data()
     
     async def handle_bef(self, user, channel, network: NetworkConnection):
