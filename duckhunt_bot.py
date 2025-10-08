@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build74
+Duck Hunt IRC Bot v1.0_build75
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -2591,6 +2591,11 @@ shop_extra_magazine = 400
             if not args:
                 # !op with no args - op the person who issued the command
                 target_user = user
+                # Check if user is in channel
+                users_in_channel = network.channels.get(channel, set())
+                if target_user.lower() not in [u.lower() for u in users_in_channel]:
+                    self.log_action(f"User {target_user} not in {channel}, op command failed silently")
+                    return
                 mode_command = f"MODE {channel} +o {target_user}"
                 self.log_action(f"Sending MODE command: {mode_command}")
                 await self.send_network(network, mode_command)
@@ -2599,6 +2604,11 @@ shop_extra_magazine = 400
             elif len(args) == 1:
                 # !op <user> - op the specified user in current channel
                 target_user = args[0]
+                # Check if user is in channel
+                users_in_channel = network.channels.get(channel, set())
+                if target_user.lower() not in [u.lower() for u in users_in_channel]:
+                    self.log_action(f"User {target_user} not in {channel}, op command failed silently")
+                    return
                 mode_command = f"MODE {channel} +o {target_user}"
                 self.log_action(f"Sending MODE command: {mode_command}")
                 await self.send_network(network, mode_command)
@@ -2608,6 +2618,11 @@ shop_extra_magazine = 400
             if not args:
                 # !deop with no args - deop the person who issued the command
                 target_user = user
+                # Check if user is in channel
+                users_in_channel = network.channels.get(channel, set())
+                if target_user.lower() not in [u.lower() for u in users_in_channel]:
+                    self.log_action(f"User {target_user} not in {channel}, deop command failed silently")
+                    return
                 mode_command = f"MODE {channel} -o {target_user}"
                 self.log_action(f"Sending MODE command: {mode_command}")
                 await self.send_network(network, mode_command)
@@ -2616,6 +2631,11 @@ shop_extra_magazine = 400
             elif len(args) == 1:
                 # !deop <user> - deop the specified user in current channel
                 target_user = args[0]
+                # Check if user is in channel
+                users_in_channel = network.channels.get(channel, set())
+                if target_user.lower() not in [u.lower() for u in users_in_channel]:
+                    self.log_action(f"User {target_user} not in {channel}, deop command failed silently")
+                    return
                 mode_command = f"MODE {channel} -o {target_user}"
                 self.log_action(f"Sending MODE command: {mode_command}")
                 await self.send_network(network, mode_command)
@@ -2844,6 +2864,11 @@ shop_extra_magazine = 400
                 # !op <channel> <user> in privmsg - op the specified user in specified channel
                 target_channel = args[0]
                 target_user = args[1]
+                # Check if user is in channel
+                users_in_channel = network.channels.get(target_channel, set())
+                if target_user.lower() not in [u.lower() for u in users_in_channel]:
+                    self.log_action(f"User {target_user} not in {target_channel}, op command failed silently")
+                    return
                 # Send MODE command to give +o to the target user
                 mode_command = f"MODE {target_channel} +o {target_user}"
                 self.log_action(f"Sending MODE command: {mode_command}")
@@ -2854,6 +2879,11 @@ shop_extra_magazine = 400
             if len(args) >= 2:
                 target_channel = args[0]
                 target_user = args[1]
+                # Check if user is in channel
+                users_in_channel = network.channels.get(target_channel, set())
+                if target_user.lower() not in [u.lower() for u in users_in_channel]:
+                    self.log_action(f"User {target_user} not in {target_channel}, deop command failed silently")
+                    return
                 # Send MODE command to remove +o from the target user
                 mode_command = f"MODE {target_channel} -o {target_user}"
                 self.log_action(f"Sending MODE command: {mode_command}")
