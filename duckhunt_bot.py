@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build72
+Duck Hunt IRC Bot v1.0_build74
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -2579,14 +2579,66 @@ shop_extra_magazine = 400
                 else:
                     self.save_player_data()
     
+    async def handle_owner_command_in_channel(self, user, channel, command, args, network: NetworkConnection):
+        """Handle owner commands in channel context"""
+        self.log_action(f"handle_owner_command_in_channel called: user={user}, command={command}, channel={channel}")
+        if not self.is_owner(user, network) and not self.is_admin(user, network):
+            self.log_action(f"User {user} is not owner or admin")
+            return  # Don't respond in channel for security
+        self.log_action(f"User {user} is owner/admin, processing command {command} in {channel}")
+        
+        if command == "op":
+            if not args:
+                # !op with no args - op the person who issued the command
+                target_user = user
+                mode_command = f"MODE {channel} +o {target_user}"
+                self.log_action(f"Sending MODE command: {mode_command}")
+                await self.send_network(network, mode_command)
+                self.log_action(f"Owner {user} opped themselves in {channel}")
+                await self.send_message(network, channel, f"{user} has been opped.")
+            elif len(args) == 1:
+                # !op <user> - op the specified user in current channel
+                target_user = args[0]
+                mode_command = f"MODE {channel} +o {target_user}"
+                self.log_action(f"Sending MODE command: {mode_command}")
+                await self.send_network(network, mode_command)
+                self.log_action(f"Owner {user} opped {target_user} in {channel}")
+                await self.send_message(network, channel, f"{target_user} has been opped.")
+        elif command == "deop":
+            if not args:
+                # !deop with no args - deop the person who issued the command
+                target_user = user
+                mode_command = f"MODE {channel} -o {target_user}"
+                self.log_action(f"Sending MODE command: {mode_command}")
+                await self.send_network(network, mode_command)
+                self.log_action(f"Owner {user} deopped themselves in {channel}")
+                await self.send_message(network, channel, f"{user} has been deopped.")
+            elif len(args) == 1:
+                # !deop <user> - deop the specified user in current channel
+                target_user = args[0]
+                mode_command = f"MODE {channel} -o {target_user}"
+                self.log_action(f"Sending MODE command: {mode_command}")
+                await self.send_network(network, mode_command)
+                self.log_action(f"Owner {user} deopped {target_user} in {channel}")
+                await self.send_message(network, channel, f"{target_user} has been deopped.")
+
     async def handle_owner_command(self, user, command, args, network: NetworkConnection):
         """Handle owner commands via PRIVMSG"""
         self.log_action(f"handle_owner_command called: user={user}, command={command}")
-        if not self.is_owner(user, network):
-            self.log_action(f"User {user} is not owner")
-            await self.send_notice(network, user, "You don't have permission to use owner commands.")
-            return
-        self.log_action(f"User {user} is owner, processing command {command}")
+        
+        # Check permissions - op/deop commands allow admin, others require owner
+        if command in ["op", "deop"]:
+            if not self.is_owner(user, network) and not self.is_admin(user, network):
+                self.log_action(f"User {user} is not owner or admin")
+                await self.send_notice(network, user, "You don't have permission to use this command.")
+                return
+            self.log_action(f"User {user} is owner/admin, processing command {command}")
+        else:
+            if not self.is_owner(user, network):
+                self.log_action(f"User {user} is not owner")
+                await self.send_notice(network, user, "You don't have permission to use owner commands.")
+                return
+            self.log_action(f"User {user} is owner, processing command {command}")
         
         if command == "add" and len(args) >= 2:
             if args[0] == "owner":
@@ -2775,20 +2827,41 @@ shop_extra_magazine = 400
             await self.send_message(network, target_channel, message)
             self.log_action(f"Owner {user} made bot say to {target_channel}: {message}")
             await self.send_notice(network, user, f"Sent message to {target_channel}: {message}")
-        elif command == "op" and len(args) >= 2:
-            target_channel = args[0]
-            target_user = args[1]
-            # Send MODE command to give +o to the target user
-            await self.send_network(network, f"MODE {target_channel} +o {target_user}")
-            self.log_action(f"Owner {user} opped {target_user} in {target_channel}")
-            await self.send_notice(network, user, f"Opped {target_user} in {target_channel}")
-        elif command == "deop" and len(args) >= 2:
-            target_channel = args[0]
-            target_user = args[1]
-            # Send MODE command to remove +o from the target user
-            await self.send_network(network, f"MODE {target_channel} -o {target_user}")
-            self.log_action(f"Owner {user} deopped {target_user} in {target_channel}")
-            await self.send_notice(network, user, f"Deopped {target_user} in {target_channel}")
+        elif command == "op":
+            if not args:
+                # !op with no args - op the person who issued the command in the current channel
+                # This assumes the command was issued in a channel, not privmsg
+                # We need to determine the channel from context
+                self.log_action(f"Owner {user} requested to be opped in current channel")
+                await self.send_notice(network, user, "Usage: !op <channel> <user> (in privmsg) or !op <user> (in channel)")
+            elif len(args) == 1:
+                # !op <user> in channel - op the specified user in current channel
+                target_user = args[0]
+                # We need to get the current channel from context
+                # For now, require full syntax
+                await self.send_notice(network, user, "Usage: !op <channel> <user> (in privmsg)")
+            elif len(args) >= 2:
+                # !op <channel> <user> in privmsg - op the specified user in specified channel
+                target_channel = args[0]
+                target_user = args[1]
+                # Send MODE command to give +o to the target user
+                mode_command = f"MODE {target_channel} +o {target_user}"
+                self.log_action(f"Sending MODE command: {mode_command}")
+                await self.send_network(network, mode_command)
+                self.log_action(f"Owner {user} opped {target_user} in {target_channel}")
+                await self.send_notice(network, user, f"Opped {target_user} in {target_channel}")
+        elif command == "deop":
+            if len(args) >= 2:
+                target_channel = args[0]
+                target_user = args[1]
+                # Send MODE command to remove +o from the target user
+                mode_command = f"MODE {target_channel} -o {target_user}"
+                self.log_action(f"Sending MODE command: {mode_command}")
+                await self.send_network(network, mode_command)
+                self.log_action(f"Owner {user} deopped {target_user} in {target_channel}")
+                await self.send_notice(network, user, f"Deopped {target_user} in {target_channel}")
+            else:
+                await self.send_notice(network, user, "Usage: !deop <channel> <user>")
         elif command == "nextduck":
             # Admin-only: report next scheduled spawn for this channel
             if not self.is_admin(user, network) and not self.is_owner(user, network):
@@ -2976,6 +3049,8 @@ shop_extra_magazine = 400
             await self.send_message(network, channel, f"{user} > Next duck in {minutes}m{seconds:02d}s.")
         elif command in ["spawnduck", "spawngold", "rearm", "disarm"]:
             await self.handle_admin_command(user, channel, command, args, network)
+        elif command in ["op", "deop"]:
+            await self.handle_owner_command_in_channel(user, channel, command, args, network)
 
     # --- Loot System ---
     async def apply_weighted_loot(self, user: str, channel: str, channel_stats: dict, network: NetworkConnection) -> None:
@@ -3160,7 +3235,7 @@ shop_extra_magazine = 400
         
         self.log_action(f"Private command: {command}, args: {args}")
         
-        if command in ["add", "reload", "restart", "join", "part", "clear", "restore", "backups", "say"]:
+        if command in ["add", "reload", "restart", "join", "part", "clear", "restore", "backups", "say", "op", "deop"]:
             self.log_action(f"Calling handle_owner_command for {command}")
             await self.handle_owner_command(user, command, args, network)
     
