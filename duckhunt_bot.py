@@ -715,11 +715,19 @@ shop_extra_magazine = 400
         log_entry = f"{timestamp} {msg_type}: {message}\n"
         self._write_to_log_file(log_entry)
     
-    def log_action(self, action):
-        """Log bot action"""
+    def log_action(self, action, debug_channel=None, debug_network=None):
+        """Log bot action and optionally send to debug channel"""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"{timestamp} DUCKHUNT {action}\n"
         self._write_to_log_file(log_entry)
+        
+        # Send debug message to channel if specified
+        if debug_channel and debug_network:
+            import asyncio
+            try:
+                asyncio.create_task(self.send_message(debug_network, debug_channel, f"[DEBUG] {action}"))
+            except Exception as e:
+                pass  # Don't let debug messages break the bot
     
     def _write_to_log_file(self, log_entry):
         """Write to log file with size limiting"""
@@ -884,6 +892,8 @@ shop_extra_magazine = 400
             if channel:
                 await self.send_network(network, f"JOIN {channel}")
                 network.channels[channel] = set()
+                # Request user list for the channel
+                await self.send_network(network, f"NAMES {channel}")
         
         # Perform commands
         if 'perform' in network.config:
@@ -957,6 +967,23 @@ shop_extra_magazine = 400
     def normalize_channel(self, channel: str) -> str:
         """Normalize channel name for internal dictionaries (strip + lower)."""
         return channel.strip().lower()
+    
+    def find_channel_key(self, network, channel, debug_channel=None, debug_network=None):
+        """Find the actual channel key in network.channels, ignoring prefixes"""
+        normalized_channel = channel.strip().lstrip('#&+@').lower()
+        self.log_action(f"DEBUG: Looking for channel '{channel}' (normalized: '{normalized_channel}') in network.channels: {list(network.channels.keys())}", debug_channel, debug_network)
+        for ch in network.channels.keys():
+            ch_normalized = ch.strip().lstrip('#&+@').lower()
+            self.log_action(f"DEBUG: Comparing '{ch}' (normalized: '{ch_normalized}') with '{normalized_channel}'", debug_channel, debug_network)
+            if ch_normalized == normalized_channel:
+                self.log_action(f"DEBUG: Found match! Returning '{ch}'", debug_channel, debug_network)
+                return ch
+        self.log_action(f"DEBUG: No match found for '{channel}'", debug_channel, debug_network)
+        return None
+    
+    def normalize_nick(self, nick):
+        """Normalize IRC nick for comparison (case-insensitive)"""
+        return nick.lower().strip()
     
     def get_network_channel_key(self, network: NetworkConnection, channel: str) -> str:
         """Get network-prefixed channel key for global data structures."""
@@ -2153,82 +2180,58 @@ shop_extra_magazine = 400
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
-                        # Check if target user exists in channel
-                        users_in_channel = network.channels.get(channel, set())
-                        if target.lower() not in [u.lower() for u in users_in_channel]:
-                            await self.send_notice(network, user, f"User '{target}' is not in {channel}.")
+                        tstats = self.get_channel_stats(target, channel, network)
+                        # If target has sunglasses active, mirror is countered
+                        if tstats.get('sunglasses_until', 0) > time.time():
+                            await self.send_message(network, channel, self.pm(user, f"{target} is wearing sunglasses. The mirror has no effect."))
                             self.safe_xp_operation(channel_stats, 'add', item['cost'])
                         else:
-                            tstats = self.get_channel_stats(target, channel, network)
-                            # If target has sunglasses active, mirror is countered
-                            if tstats.get('sunglasses_until', 0) > time.time():
-                                await self.send_message(network, channel, self.pm(user, f"{target} is wearing sunglasses. The mirror has no effect."))
-                                self.safe_xp_operation(channel_stats, 'add', item['cost'])
-                            else:
-                                tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
-                                await self.send_message(network, channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                                # Save target's mirror status to database
-                                if self.data_storage == 'sql' and self.db_backend:
-                                    self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
+                            tstats['mirror_until'] = max(tstats.get('mirror_until', 0), time.time() + 24*3600)
+                            await self.send_message(network, channel, self.pm(user, f"You dazzle {target} with a mirror for 24h. Their accuracy is reduced. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                            # Save target's mirror status to database
+                            if self.data_storage == 'sql' and self.db_backend:
+                                self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 15:  # Handful of sand: victim reliability worse for 1h (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 15 <nick>")
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
-                        # Check if target user exists in channel
-                        users_in_channel = network.channels.get(channel, set())
-                        if target.lower() not in [u.lower() for u in users_in_channel]:
-                            await self.send_notice(network, user, f"User '{target}' is not in {channel}.")
-                            self.safe_xp_operation(channel_stats, 'add', item['cost'])
-                        else:
-                            tstats = self.get_channel_stats(target, channel, network)
-                            tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 3600)
-                            await self.send_message(network, channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                            # Save target's sand status to database
-                            if self.data_storage == 'sql' and self.db_backend:
-                                self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
+                        tstats = self.get_channel_stats(target, channel, network)
+                        tstats['sand_until'] = max(tstats.get('sand_until', 0), time.time() + 3600)
+                        await self.send_message(network, channel, self.pm(user, f"You throw sand into {target}'s gun. Their gun will jam more for 1h. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                        # Save target's sand status to database
+                        if self.data_storage == 'sql' and self.db_backend:
+                            self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 16:  # Water bucket: soak target for 1h (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 16 <nick>")
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
-                        # Check if target user exists in channel
-                        users_in_channel = network.channels.get(channel, set())
-                        if target.lower() not in [u.lower() for u in users_in_channel]:
-                            await self.send_notice(network, user, f"User '{target}' is not in {channel}.")
+                        tstats = self.get_channel_stats(target, channel, network)
+                        now = time.time()
+                        if tstats.get('soaked_until', 0) > now:
+                            await self.send_notice(network, user, f"{target} is already soaked. Refunding XP.")
                             self.safe_xp_operation(channel_stats, 'add', item['cost'])
                         else:
-                            tstats = self.get_channel_stats(target, channel, network)
-                            now = time.time()
-                            if tstats.get('soaked_until', 0) > now:
-                                await self.send_notice(network, user, f"{target} is already soaked. Refunding XP.")
-                                self.safe_xp_operation(channel_stats, 'add', item['cost'])
-                            else:
-                                tstats['soaked_until'] = max(tstats.get('soaked_until', 0), now + 3600)
-                                await self.send_message(network, channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                                # Save target's soaked status to database
-                                if self.data_storage == 'sql' and self.db_backend:
-                                    self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
+                            tstats['soaked_until'] = max(tstats.get('soaked_until', 0), now + 3600)
+                            await self.send_message(network, channel, self.pm(user, f"You soak {target} with a water bucket. They're out for 1h unless they change clothes. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                            # Save target's soaked status to database
+                            if self.data_storage == 'sql' and self.db_backend:
+                                self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 17:  # Sabotage: jam target immediately (target required)
                     if len(args) < 2:
                         await self.send_notice(network, user, "Usage: !shop 17 <nick>")
                         self.safe_xp_operation(channel_stats, 'add', item['cost'])
                     else:
                         target = args[1]
-                        # Check if target user exists in channel
-                        users_in_channel = network.channels.get(channel, set())
-                        if target.lower() not in [u.lower() for u in users_in_channel]:
-                            await self.send_notice(network, user, f"User '{target}' is not in {channel}.")
-                            self.safe_xp_operation(channel_stats, 'add', item['cost'])
-                        else:
-                            tstats = self.get_channel_stats(target, channel, network)
-                            tstats['jammed'] = True
-                            await self.send_message(network, channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. {self.colorize(f'[-{cost} XP]', 'red')}"))
-                            # Save target's jammed status to database
-                            if self.data_storage == 'sql' and self.db_backend:
-                                self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
+                        tstats = self.get_channel_stats(target, channel, network)
+                        tstats['jammed'] = True
+                        await self.send_message(network, channel, self.pm(user, f"You sabotage {target}'s weapon. It's jammed. {self.colorize(f'[-{cost} XP]', 'red')}"))
+                        # Save target's jammed status to database
+                        if self.data_storage == 'sql' and self.db_backend:
+                            self.db_backend.update_channel_stats(target, network.name, channel, self._filter_computed_stats(tstats))
                 elif item_id == 18:  # Life insurance: protect against confiscation for 24h
                     channel_stats['life_insurance_until'] = max(float(channel_stats.get('life_insurance_until', 0)), float(time.time() + 24*3600))
                     await self.send_message(network, channel, self.pm(user, f"You purchase life insurance. Confiscations will be prevented for 24h. {self.colorize(f'[-{cost} XP]', 'red')}"))
@@ -2400,12 +2403,6 @@ shop_extra_magazine = 400
             return
         
         target = args[0]
-        
-        # Check if target user exists in channel
-        users_in_channel = network.channels.get(channel, set())
-        if target.lower() not in [u.lower() for u in users_in_channel]:
-            await self.send_message(network, channel, f"User '{target}' is not in {channel}.")
-            return
         
         player = self.get_player(user)
         channel_stats = self.get_channel_stats(user, channel, network)
@@ -2581,65 +2578,34 @@ shop_extra_magazine = 400
     
     async def handle_owner_command_in_channel(self, user, channel, command, args, network: NetworkConnection):
         """Handle owner commands in channel context"""
-        self.log_action(f"handle_owner_command_in_channel called: user={user}, command={command}, channel={channel}")
         if not self.is_owner(user, network) and not self.is_admin(user, network):
-            self.log_action(f"User {user} is not owner or admin")
             return  # Don't respond in channel for security
-        self.log_action(f"User {user} is owner/admin, processing command {command} in {channel}")
         
         if command == "op":
             if not args:
                 # !op with no args - op the person who issued the command
                 target_user = user
-                # Check if user is in channel
-                users_in_channel = network.channels.get(channel, set())
-                if target_user.lower() not in [u.lower() for u in users_in_channel]:
-                    self.log_action(f"User {target_user} not in {channel}, op command failed silently")
-                    return
                 mode_command = f"MODE {channel} +o {target_user}"
-                self.log_action(f"Sending MODE command: {mode_command}")
                 await self.send_network(network, mode_command)
-                self.log_action(f"Owner {user} opped themselves in {channel}")
                 await self.send_message(network, channel, f"{user} has been opped.")
             elif len(args) == 1:
                 # !op <user> - op the specified user in current channel
                 target_user = args[0]
-                # Check if user is in channel
-                users_in_channel = network.channels.get(channel, set())
-                if target_user.lower() not in [u.lower() for u in users_in_channel]:
-                    self.log_action(f"User {target_user} not in {channel}, op command failed silently")
-                    return
                 mode_command = f"MODE {channel} +o {target_user}"
-                self.log_action(f"Sending MODE command: {mode_command}")
                 await self.send_network(network, mode_command)
-                self.log_action(f"Owner {user} opped {target_user} in {channel}")
                 await self.send_message(network, channel, f"{target_user} has been opped.")
         elif command == "deop":
             if not args:
                 # !deop with no args - deop the person who issued the command
                 target_user = user
-                # Check if user is in channel
-                users_in_channel = network.channels.get(channel, set())
-                if target_user.lower() not in [u.lower() for u in users_in_channel]:
-                    self.log_action(f"User {target_user} not in {channel}, deop command failed silently")
-                    return
                 mode_command = f"MODE {channel} -o {target_user}"
-                self.log_action(f"Sending MODE command: {mode_command}")
                 await self.send_network(network, mode_command)
-                self.log_action(f"Owner {user} deopped themselves in {channel}")
                 await self.send_message(network, channel, f"{user} has been deopped.")
             elif len(args) == 1:
                 # !deop <user> - deop the specified user in current channel
                 target_user = args[0]
-                # Check if user is in channel
-                users_in_channel = network.channels.get(channel, set())
-                if target_user.lower() not in [u.lower() for u in users_in_channel]:
-                    self.log_action(f"User {target_user} not in {channel}, deop command failed silently")
-                    return
                 mode_command = f"MODE {channel} -o {target_user}"
-                self.log_action(f"Sending MODE command: {mode_command}")
                 await self.send_network(network, mode_command)
-                self.log_action(f"Owner {user} deopped {target_user} in {channel}")
                 await self.send_message(network, channel, f"{target_user} has been deopped.")
 
     async def handle_owner_command(self, user, command, args, network: NetworkConnection):
@@ -2698,6 +2664,8 @@ shop_extra_magazine = 400
             # Join the channel on the network where the command was received
             await self.send_network(network, f"JOIN {channel}")
             network.channels[channel] = set()
+            # Request user list for the channel
+            await self.send_network(network, f"NAMES {channel}")
             self.log_action(f"Joined {channel} on {network.name} by {user}")
             # Schedule a duck spawn for the new channel
             await self.schedule_channel_next_duck(network, channel)
@@ -2864,10 +2832,15 @@ shop_extra_magazine = 400
                 # !op <channel> <user> in privmsg - op the specified user in specified channel
                 target_channel = args[0]
                 target_user = args[1]
-                # Check if user is in channel
-                users_in_channel = network.channels.get(target_channel, set())
-                if target_user.lower() not in [u.lower() for u in users_in_channel]:
-                    self.log_action(f"User {target_user} not in {target_channel}, op command failed silently")
+                # Check if user is in channel (normalize channel name)
+                channel_key = self.find_channel_key(network, target_channel)
+                if not channel_key:
+                    self.log_action(f"Channel {target_channel} not found, op command failed silently")
+                    return
+                users_in_channel = network.channels.get(channel_key, set())
+                normalized_target = self.normalize_nick(target_user)
+                if normalized_target not in [self.normalize_nick(u) for u in users_in_channel]:
+                    self.log_action(f"User {target_user} not in {channel_key}, op command failed silently")
                     return
                 # Send MODE command to give +o to the target user
                 mode_command = f"MODE {target_channel} +o {target_user}"
@@ -2879,10 +2852,15 @@ shop_extra_magazine = 400
             if len(args) >= 2:
                 target_channel = args[0]
                 target_user = args[1]
-                # Check if user is in channel
-                users_in_channel = network.channels.get(target_channel, set())
-                if target_user.lower() not in [u.lower() for u in users_in_channel]:
-                    self.log_action(f"User {target_user} not in {target_channel}, deop command failed silently")
+                # Check if user is in channel (normalize channel name)
+                channel_key = self.find_channel_key(network, target_channel)
+                if not channel_key:
+                    self.log_action(f"Channel {target_channel} not found, deop command failed silently")
+                    return
+                users_in_channel = network.channels.get(channel_key, set())
+                normalized_target = self.normalize_nick(target_user)
+                if normalized_target not in [self.normalize_nick(u) for u in users_in_channel]:
+                    self.log_action(f"User {target_user} not in {channel_key}, deop command failed silently")
                     return
                 # Send MODE command to remove +o from the target user
                 mode_command = f"MODE {target_channel} -o {target_user}"
@@ -2959,7 +2937,7 @@ shop_extra_magazine = 400
             match = re.search(r':([^!]+)![^@]+@[^ ]+ PRIVMSG ([^:]+):(.+)', data)
             if match:
                 user = match.group(1)
-                target = match.group(2)
+                target = match.group(2).strip()
                 message = match.group(3).strip()
                 
                 if target.startswith('#'):
@@ -2989,6 +2967,21 @@ shop_extra_magazine = 400
                 if channel in network.channels:
                     network.channels[channel].add(user)
                 self.log_message("JOIN", f"{user} joined {channel}")
+        
+        elif data.startswith("353 "):
+            # NAMES response - list of users in channel
+            # Format: :server 353 bot_nick = channel :user1 user2 user3
+            parts = data.split()
+            if len(parts) >= 6 and parts[3] == "=":
+                channel = parts[4]
+                users_list = ' '.join(parts[5:]).lstrip(':')  # Get all users from parts[5] onwards
+                # Parse users (they might have prefixes like @ or +)
+                users = users_list.split()
+                if channel in network.channels:
+                    for user in users:
+                        # Remove IRC prefixes (@ for ops, + for voiced, etc.)
+                        clean_user = user.lstrip('@+%&~')
+                        network.channels[channel].add(clean_user)
         
         elif "PART" in data:
             # User left channel
@@ -3464,13 +3457,6 @@ shop_extra_magazine = 400
         try:
             target_user = args[0] if args else user
             channel_key = f"{network.name}:{channel}"
-            
-            # Check if target user exists in channel (if targeting someone else)
-            if args and target_user != user:
-                users_in_channel = network.channels.get(channel, set())
-                if target_user.lower() not in [u.lower() for u in users_in_channel]:
-                    await self.send_message(network, channel, f"User '{target_user}' is not in {channel}.")
-                    return
             
             # Get player stats
             if self.data_storage == 'sql' and self.db_backend:
