@@ -1927,6 +1927,10 @@ shop_extra_magazine = 400
                 # Quietly unconfiscate all on this channel
                 self.unconfiscate_confiscated_in_channel(channel, network)
                 
+                # Record when duck was befriended (for !lastduck)
+                channel_stats['last_duck_time'] = time.time()
+                self.channel_last_duck_time[channel_key] = time.time()
+                
                 # Award XP for befriending when completed
                 # Base XP for befriending (golden vs regular)
                 base_xp = 50 if was_golden else int(self.config.get('DEFAULT', 'default_xp', fallback=10))
@@ -2460,7 +2464,7 @@ shop_extra_magazine = 400
             return
         
         # Check if any ducks have been killed in this channel
-        if not channel_stats.get('last_duck_time') or channel_stats.get('ducks_shot', 0) == 0:
+        if not channel_stats.get('last_duck_time') or (channel_stats.get('ducks_shot', 0) == 0 and channel_stats.get('befriended_ducks', 0) == 0):
             await self.send_message(network, channel, f"{user} > No ducks have been killed in {channel} yet.")
             return
         
