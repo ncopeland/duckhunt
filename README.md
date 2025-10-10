@@ -1,8 +1,48 @@
-# Duck Hunt IRC Bot v1.0_build72
+# Duck Hunt IRC Bot v1.0_build77
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build77
+- **Enhancement**: Added personalized quit message on restart
+  - Bot now shows "{user} requested restart." when quitting
+  - QUIT message sent to all connected networks before exiting
+  - Makes it clear who triggered the restart
+
+### v1.0_build76
+- **Enhancement**: Improved promotion/demotion magazine/ammo mechanics
+  - When promoted at max magazines (e.g., 2/2), you now get the new max (e.g., 3/3)
+  - Same applies to ammo: if at max ammo, you get the new capacity
+  - Added feedback messages: "You found a magazine", "You lost a magazine", etc.
+  - Demotion properly caps magazines/ammo with loss messages
+  - Creates a more rewarding promotion experience
+
+### v1.0_build75
+- **Bug Fix**: Fixed demotion magazine/ammo cap issue
+  - When demoted, magazines and ammo now immediately cap to new level limits
+  - Prevents having 3/2 magazines (over the max) after demotion
+  - Caps are calculated including any upgrade levels the player has purchased
+  - Ensures consistent weapon capacity across level changes
+
+### v1.0_build74
+- **UI Improvement**: Friendlier message for new players using !duckstats
+  - New players now see "You haven't shot any ducks yet! Wait for a duck to spawn and try !bang"
+  - Prevents confusing "Error retrieving stats" or "No stats found" messages
+  - Different message when checking other players: "{player} hasn't shot any ducks yet in {channel}"
+  - Applies to both SQL and JSON backends
+
+### v1.0_build73
+- **Critical Fix**: Fixed !duckstats crash for new SQL-backend players
+  - Fixed "unsupported format string passed to NoneType" error when displaying stats
+  - `best_time` and `total_reaction_time` now properly handle NULL values from database
+  - New players created directly in SQL backend now have stats displayed correctly
+  - Applies to both stats display and reaction time calculations
+- **Critical Fix**: Fixed magazine_capacity initialization for SQL-backend players
+  - New players now properly start with magazine_capacity=6 and magazines_max=2
+  - Fixed incorrect "Ammo: 6/0" display (was backwards due to 0 magazine_capacity)
+  - Migration script included to fix existing affected players (49 records corrected)
+  - Ammo mechanics now work correctly for all SQL-backend players
 
 ### v1.0_build72
 - **UI Improvement**: Cleaned up user validation error messages

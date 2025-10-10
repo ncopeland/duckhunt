@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build75
+Duck Hunt IRC Bot v1.0_build77
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -145,10 +145,11 @@ class SQLBackend:
             stats = result[0]
             return stats
         else:
-            # Create new channel stats
+            # Create new channel stats with proper defaults
+            # Level 1 (XP 0) should start with magazine_capacity=6, magazines_max=2
             query = """INSERT INTO channel_stats 
-                       (player_id, network_name, channel_name) 
-                       VALUES (%s, %s, %s)"""
+                       (player_id, network_name, channel_name, magazine_capacity, magazines_max) 
+                       VALUES (%s, %s, %s, 6, 2)"""
             if self.execute_query(query, (player_id, network_name, channel_name)):
                 return self.get_channel_stats(username, network_name, channel_name)
         return None
@@ -451,8 +452,11 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build67"
+        self.version = "1.0_build73"
         self.ducks_lock = asyncio.Lock()
+        
+        # Rebuild channel_last_duck_time from player data
+        self._rebuild_channel_last_duck_times()
         
         # Multi-language support
         if LANG_AVAILABLE:
@@ -684,6 +688,30 @@ shop_extra_magazine = 400
             except:
                 return {}
         return {}
+    
+    def _rebuild_channel_last_duck_times(self):
+        """Rebuild channel_last_duck_time dict from player data on startup"""
+        from datetime import datetime
+        
+        for player_name, player_data in self.players.items():
+            channel_stats = player_data.get('channel_stats', {})
+            for channel, stats in channel_stats.items():
+                last_duck_time = stats.get('last_duck_time')
+                if last_duck_time:
+                    # Convert to timestamp if needed
+                    if isinstance(last_duck_time, str):
+                        try:
+                            last_duck_time = float(last_duck_time)
+                        except (ValueError, TypeError):
+                            continue
+                    elif isinstance(last_duck_time, datetime):
+                        last_duck_time = last_duck_time.timestamp()
+                    elif not isinstance(last_duck_time, (int, float)):
+                        continue
+                    
+                    # Keep the most recent time for each channel
+                    if channel not in self.channel_last_duck_time or last_duck_time > self.channel_last_duck_time[channel]:
+                        self.channel_last_duck_time[channel] = last_duck_time
     
     def safe_xp_operation(self, channel_stats, operation, value):
         """Safely perform XP arithmetic operations with Decimal conversion"""
@@ -1259,10 +1287,61 @@ shop_extra_magazine = 400
             "duck pest", "duck hassler", "duck killer", "duck demolisher", "duck disassembler"
         ]
         title = titles[min(new_level-1, len(titles)-1)] if new_level > 0 else "unknown"
+        
+        # Calculate old and new level capacities (including upgrades)
+        old_props = self.get_level_properties(int(float(prev_xp)))
+        new_props = self.get_level_properties(int(float(stats.get('xp', 0))))
+        old_mag_cap = old_props['magazine_capacity'] + int(stats.get('mag_upgrade_level', 0))
+        old_mags_max = old_props['magazines_max'] + int(stats.get('mag_capacity_level', 0))
+        new_mag_cap = new_props['magazine_capacity'] + int(stats.get('mag_upgrade_level', 0))
+        new_mags_max = new_props['magazines_max'] + int(stats.get('mag_capacity_level', 0))
+        
+        mag_change_msg = ""
+        ammo_change_msg = ""
+        
         if new_level > prev_level:
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('PROMOTION', 'green', bold=True)} You are promoted to level {new_level} ({title}) in {channel}."))
+            # Promotion
+            # If at max magazines, grant the new max
+            if stats.get('magazines', 0) >= old_mags_max and new_mags_max > old_mags_max:
+                old_mags = stats['magazines']
+                stats['magazines'] = new_mags_max
+                mag_diff = stats['magazines'] - old_mags
+                if mag_diff == 1:
+                    mag_change_msg = " You found a magazine."
+                elif mag_diff > 1:
+                    mag_change_msg = f" You found {mag_diff} magazines."
+            
+            # If at max ammo, grant the new max
+            if stats.get('ammo', 0) >= old_mag_cap and new_mag_cap > old_mag_cap:
+                old_ammo = stats['ammo']
+                stats['ammo'] = new_mag_cap
+                ammo_diff = stats['ammo'] - old_ammo
+                if ammo_diff == 1:
+                    ammo_change_msg = " You found a bullet."
+                elif ammo_diff > 1:
+                    ammo_change_msg = f" You found {ammo_diff} bullets."
+            
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('PROMOTION', 'green', bold=True)} You are promoted to level {new_level} ({title}) in {channel}.{mag_change_msg}{ammo_change_msg}"))
         else:
-            await self.send_message(network, channel, self.pm(user, f"{self.colorize('DEMOTION', 'red', bold=True)} You are demoted to level {new_level} ({title}) in {channel}."))
+            # Demotion - cap magazines and ammo to new level limits
+            if stats.get('ammo', 0) > new_mag_cap:
+                lost_ammo = stats['ammo'] - new_mag_cap
+                stats['ammo'] = new_mag_cap
+                if lost_ammo == 1:
+                    ammo_change_msg = " You lost a bullet."
+                else:
+                    ammo_change_msg = f" You lost {lost_ammo} bullets."
+            
+            if stats.get('magazines', 0) > new_mags_max:
+                lost_mags = stats['magazines'] - new_mags_max
+                stats['magazines'] = new_mags_max
+                if lost_mags == 1:
+                    mag_change_msg = " You lost a magazine."
+                else:
+                    mag_change_msg = f" You lost {lost_mags} magazines."
+            
+            await self.send_message(network, channel, self.pm(user, f"{self.colorize('DEMOTION', 'red', bold=True)} You are demoted to level {new_level} ({title}) in {channel}.{mag_change_msg}{ammo_change_msg}"))
+        
         stats['level'] = new_level
 
     def apply_level_bonuses(self, channel_stats):
@@ -1534,6 +1613,16 @@ shop_extra_magazine = 400
             await self.send_message(network, channel, self.pm(user, f"{self.colorize('*CLICK*', 'red')} EMPTY MAGAZINE | Ammo: 0/{magazine_capacity} | Magazines: {channel_stats['magazines']}/{mags_max}"))
             return
         
+        # Soaked players cannot shoot
+        if channel_stats.get('soaked_until', 0) > time.time():
+            await self.send_message(network, channel, self.pm(user, "You are soaked and cannot shoot. Use spare clothes or wait."))
+            return
+        
+        # Egged players cannot shoot
+        if channel_stats.get('egged', False):
+            await self.send_message(network, channel, self.pm(user, "You are covered in egg and cannot shoot. Use spare clothes to clean up."))
+            return
+        
         # Check if there is a duck in this channel
         async with self.ducks_lock:
             channel_key = self.get_network_channel_key(network, channel)
@@ -1639,15 +1728,6 @@ shop_extra_magazine = 400
             # Accuracy check
             hit_roll = random.random()
             hit_chance = self.compute_accuracy(channel_stats, 'shoot')
-            # Soaked players cannot shoot
-            if channel_stats.get('soaked_until', 0) > time.time():
-                await self.send_message(network, channel, self.pm(user, "You are soaked and cannot shoot. Use spare clothes or wait."))
-                return
-            
-            # Egged players cannot shoot
-            if channel_stats.get('egged', False):
-                await self.send_message(network, channel, self.pm(user, "You are covered in egg and cannot shoot. Use spare clothes to clean up."))
-                return
             if hit_roll > hit_chance:
                 channel_stats['misses'] += 1
                 # Random penalty (-1 to -5) on miss
@@ -1755,7 +1835,7 @@ shop_extra_magazine = 400
             
             prev_xp = channel_stats['xp']
             self.safe_xp_operation(channel_stats, 'add', xp_gain)
-            channel_stats['total_reaction_time'] = float(channel_stats.get('total_reaction_time', 0)) + float(reaction_time)
+            channel_stats['total_reaction_time'] = float(channel_stats.get('total_reaction_time') or 0) + float(reaction_time)
             
             if not channel_stats['best_time'] or float(reaction_time) < float(channel_stats['best_time']):
                 channel_stats['best_time'] = float(reaction_time)
@@ -1817,6 +1897,11 @@ shop_extra_magazine = 400
         player = self.get_player(user)
         channel_stats = self.get_channel_stats(user, channel, network)
         
+        # Egged players cannot befriend
+        if channel_stats.get('egged', False):
+            await self.send_message(network, channel, self.pm(user, "You are covered in egg and cannot befriend. Use spare clothes to clean up."))
+            return
+        
         # Check if there is a duck in this channel
         async with self.ducks_lock:
             channel_key = self.get_network_channel_key(network, channel)
@@ -1870,9 +1955,6 @@ shop_extra_magazine = 400
             # Accuracy-style check for befriending (duck might not notice)
             bef_roll = random.random()
             bef_chance = self.compute_accuracy(channel_stats, 'bef')
-            if channel_stats.get('soaked_until', 0) > time.time():
-                await self.send_message(network, channel, self.pm(user, "You are soaked and cannot befriend. Use spare clothes or wait."))
-                return
             if bef_roll > bef_chance:
                 # Random penalty (-1 to -10) on failed befriend (duck distracted)
                 penalty = -random.randint(1, 10)
@@ -1883,7 +1965,7 @@ shop_extra_magazine = 400
                 # 1/20 chance for duck to hiss (become hostile)
                 if random.randint(1, 20) == 1:
                     duck['hissed'] = True
-                    await self.send_message(network, channel, f"{self.colorize(user, 'red')} - {self.colorize('*HISS*', 'red', bold=True)} The duck hisses at you ferociously. Do not mess with this duck. {self.colorize(f'[{penalty} XP]', 'red')}")
+                    await self.send_message(network, channel, f"{self.colorize(user, 'red')} - {self.colorize('*HISS*', 'red', bold=True)} The duck hisses at you ferociously. {self.colorize('[DO NOT MESS WITH THIS DUCK!]', 'yellow')} {self.colorize(f'[{penalty} XP]', 'red')}")
                 else:
                     await self.send_message(network, channel, self.pm(user, f"{self.colorize('FRIEND', 'red', bold=True)} The duck seems distracted. Try again. {self.colorize(f'[{penalty} XP]', 'red')}"))
                 
@@ -2455,7 +2537,6 @@ shop_extra_magazine = 400
             return
         
         player = self.get_player(user)
-        channel_stats = self.get_channel_stats(user, channel, network)
         
         # Check if there's currently an active duck
         channel_key = self.get_network_channel_key(network, channel)
@@ -2463,13 +2544,13 @@ shop_extra_magazine = 400
             await self.send_message(network, channel, f"{user} > There is currently a duck in {channel}.")
             return
         
-        # Check if any ducks have been killed in this channel
-        if not channel_stats.get('last_duck_time') or (channel_stats.get('ducks_shot', 0) == 0 and channel_stats.get('befriended_ducks', 0) == 0):
+        # Check if any ducks have been killed in this channel (use global channel tracker)
+        if channel_key not in self.channel_last_duck_time:
             await self.send_message(network, channel, f"{user} > No ducks have been killed in {channel} yet.")
             return
         
         current_time = time.time()
-        last_duck_time = channel_stats.get('last_duck_time', 0)
+        last_duck_time = self.channel_last_duck_time.get(channel_key, 0)
         
         # Handle different data types for last_duck_time
         if isinstance(last_duck_time, str):
@@ -2655,13 +2736,20 @@ shop_extra_magazine = 400
             # For now, just log the reload
         elif command == "restart":
             self.log_action(f"Restart command received from {user}")
-            # Note: This is a global command, so we can't send to a specific network
-            # For now, just log the restart
-            self.log_action(f"{user} restarted the bot.")
             # Save data before restart
             self.save_player_data()
+            # Send QUIT message to all networks
+            quit_msg = f"{user} requested restart."
+            for net in self.networks.values():
+                try:
+                    await self.send_network(net, f"QUIT :{quit_msg}")
+                    self.log_action(f"Sent QUIT to {net.name}: {quit_msg}")
+                except:
+                    pass
+            # Give time for QUIT to send
+            await asyncio.sleep(0.5)
+            self.log_action(f"{user} restarted the bot.")
             # Close connection and exit
-            # Note: This is a global command, so we can't close a specific network socket
             exit(0)
         elif command == "join" and args:
             channel = args[0]
@@ -3468,7 +3556,10 @@ shop_extra_magazine = 400
                 stats = self.db_backend.get_channel_stats(target_user, network.name, channel)
                 
                 if not stats:
-                    await self.send_message(network, channel, f"No stats found for {target_user} in {channel}")
+                    if target_user == user:
+                        await self.send_message(network, channel, f"{target_user}: You haven't shot any ducks yet! Wait for a duck to spawn and try !bang")
+                    else:
+                        await self.send_message(network, channel, f"{target_user} hasn't shot any ducks yet in {channel}")
                     return
                 
                 # Apply level bonuses
@@ -3477,14 +3568,20 @@ shop_extra_magazine = 400
             else:
                 # JSON backend
                 if target_user not in self.players:
-                    await self.send_message(network, channel, f"No stats found for {target_user} in {channel}")
+                    if target_user == user:
+                        await self.send_message(network, channel, f"{target_user}: You haven't shot any ducks yet! Wait for a duck to spawn and try !bang")
+                    else:
+                        await self.send_message(network, channel, f"{target_user} hasn't shot any ducks yet in {channel}")
                     return
                 
                 player_data = self.players[target_user]
                 stats_map = player_data.get('channel_stats', {})
                 
                 if channel_key not in stats_map:
-                    await self.send_message(network, channel, f"No stats found for {target_user} in {channel}")
+                    if target_user == user:
+                        await self.send_message(network, channel, f"{target_user}: You haven't shot any ducks yet! Wait for a duck to spawn and try !bang")
+                    else:
+                        await self.send_message(network, channel, f"{target_user} hasn't shot any ducks yet in {channel}")
                     return
                 
                 stats = stats_map[channel_key]
@@ -3497,8 +3594,8 @@ shop_extra_magazine = 400
             golden_ducks = stats.get('golden_ducks', 0)
             misses = stats.get('misses', 0)
             accuracy = (ducks_shot / (ducks_shot + misses) * 100) if (ducks_shot + misses) > 0 else 0
-            best_time = stats.get('best_time', 0)
-            avg_reaction = stats.get('total_reaction_time', 0) / max(ducks_shot, 1)
+            best_time = stats.get('best_time') or 0  # Handle NULL/None from database
+            avg_reaction = (stats.get('total_reaction_time') or 0) / max(ducks_shot, 1)
             
             ammo = stats.get('ammo', 0)
             magazines = stats.get('magazines', 0)
