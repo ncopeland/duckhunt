@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build77
+Duck Hunt IRC Bot v1.0_build78
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -452,7 +452,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build77"
+        self.version = "1.0_build78"
         self.ducks_lock = asyncio.Lock()
         
         # Rebuild channel_last_duck_time from player data
@@ -3217,11 +3217,11 @@ shop_extra_magazine = 400
         elif choice == "extra_mag":
             if channel_stats['magazines'] < mags_max:
                 channel_stats['magazines'] = min(mags_max, channel_stats['magazines'] + 1)
-                await say(f"By searching the bushes, you find an extra ammo magazine_capacity! | Magazines: {channel_stats['magazines']}/{mags_max}")
+                await say(f"By searching the bushes, you find an extra magazine! | Magazines: {channel_stats['magazines']}/{mags_max}")
             else:
                 xp = 20
                 self.safe_xp_operation(channel_stats, 'add', xp)
-                await say(f"By searching the bushes, you find an extra ammo magazine_capacity! You already have maximum magazines, so you gain {xp} XP instead.")
+                await say(f"By searching the bushes, you find an extra magazine! You already have maximum magazines, so you gain {xp} XP instead.")
         elif choice == "sight_next":
             # If already active, convert to XP equal to shop price (shop_sight)
             if channel_stats.get('sight_next_shot', False):

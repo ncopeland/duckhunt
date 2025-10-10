@@ -1,8 +1,14 @@
-# Duck Hunt IRC Bot v1.0_build77
+# Duck Hunt IRC Bot v1.0_build78
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build78
+- **Bug Fix**: Fixed loot message displaying variable name
+  - Changed "you find an extra ammo magazine_capacity!" to "you find an extra magazine!"
+  - Affects the loot drop when finding magazines in bushes after killing a duck
+  - Much clearer and less confusing
 
 ### v1.0_build77
 - **Enhancement**: Added personalized quit message on restart
