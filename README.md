@@ -9,6 +9,9 @@ An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop sy
   - Bot now shows "{user} requested restart." when quitting
   - QUIT message sent to all connected networks before exiting
   - Makes it clear who triggered the restart
+- **Update**: Updated IRC realname field to show v1.0_build77
+  - Bot now properly advertises current version when connecting to IRC
+  - Version visible in WHOIS and connection messages
 
 ### v1.0_build76
 - **Enhancement**: Improved promotion/demotion magazine/ammo mechanics
