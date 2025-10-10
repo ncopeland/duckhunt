@@ -452,7 +452,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build73"
+        self.version = "1.0_build77"
         self.ducks_lock = asyncio.Lock()
         
         # Rebuild channel_last_duck_time from player data
