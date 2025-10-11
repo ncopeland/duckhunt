@@ -1,8 +1,39 @@
-# Duck Hunt IRC Bot v1.0_build78
+# Duck Hunt IRC Bot v1.0_build82
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build82
+- **Major Fix**: Removed unnecessary channel user tracking for duck detector
+  - Duck detector now queries database directly for users with active detectors
+  - No longer depends on tracking who's in each channel via JOIN/PART/NAMES
+  - Sends notices directly to users based on database records
+  - Much simpler and more reliable - always works regardless of user tracking
+  - Eliminates all the complexity of normalizing channel names in user lists
+
+### v1.0_build81
+- **Critical Fix**: Fixed NAMES (353) response parsing not populating channel user lists
+  - Changed condition from `data.startswith("353 ")` to `" 353 " in data`
+  - Server messages start with `:servername 353` not `353`, so startswith() never matched
+  - Channel user lists now properly populated from NAMES responses
+  - Duck detector will now find users in channels and send pre-spawn notices
+
+### v1.0_build80
+- **Critical Fix**: Fixed duck detector pre-spawn notices not being sent
+  - Bot now normalizes channel names consistently across ALL operations
+  - Channel user lists now stored with normalized (lowercase) channel names
+  - Fixed JOIN, PART, NAMES (353) message processing to normalize channel names
+  - Fixed channel initialization on bot startup to use normalized names
+  - Duck detector notices will now be sent to all users with active detectors
+
+### v1.0_build79
+- **Critical Fix**: Fixed duck detector not working due to case-sensitive channel names
+  - IRC channel names are case-insensitive, but SQL backend was treating them as case-sensitive
+  - Bot now normalizes all channel names to lowercase before database operations
+  - Fixed issue where #DuckHuntBot and #duckhuntbot were treated as different channels
+  - Migration script included to normalize existing database records
+  - Duck detector and all per-channel features now work correctly
 
 ### v1.0_build78
 - **Bug Fix**: Fixed loot message displaying variable name

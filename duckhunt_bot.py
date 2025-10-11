@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build78
+Duck Hunt IRC Bot v1.0_build82
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -137,6 +137,9 @@ class SQLBackend:
         if not player_id:
             return None
         
+        # Normalize channel name (IRC channels are case-insensitive)
+        channel_name = channel_name.strip().lower()
+        
         query = """SELECT * FROM channel_stats 
                    WHERE player_id = %s AND network_name = %s AND channel_name = %s"""
         result = self.execute_query(query, (player_id, network_name, channel_name), fetch=True)
@@ -160,6 +163,9 @@ class SQLBackend:
         if not player_id:
             print(f"ERROR: No player_id found for {username}")
             return False
+        
+        # Normalize channel name (IRC channels are case-insensitive)
+        channel_name = channel_name.strip().lower()
         
         # Valid fields that exist in the SQL schema
         valid_fields = {
@@ -225,6 +231,9 @@ class SQLBackend:
         """Backup all channel stats for a specific network/channel before clearing"""
         import uuid
         from datetime import datetime
+        
+        # Normalize channel name (IRC channels are case-insensitive)
+        channel_name = channel_name.strip().lower()
         
         # Generate unique backup ID with timestamp
         backup_id = f"{network_name}_{channel_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
@@ -308,6 +317,9 @@ class SQLBackend:
     
     def clear_channel_stats(self, network_name, channel_name, backup=True):
         """Clear all channel stats for a specific network/channel, optionally with backup"""
+        # Normalize channel name (IRC channels are case-insensitive)
+        channel_name = channel_name.strip().lower()
+        
         backup_id = None
         if backup:
             # Create backup first
@@ -452,7 +464,7 @@ class DuckHuntBot:
         self.authenticated_users = set()
         self.active_ducks = {}  # Per-channel duck lists: {channel: [ {'spawn_time': time, 'golden': bool, 'health': int}, ... ]}
         self.channel_last_duck_time = {}  # {channel: timestamp} - tracks when last duck was killed in each channel
-        self.version = "1.0_build78"
+        self.version = "1.0_build82"
         self.ducks_lock = asyncio.Lock()
         
         # Rebuild channel_last_duck_time from player data
@@ -919,7 +931,7 @@ shop_extra_magazine = 400
             channel = channel.strip()
             if channel:
                 await self.send_network(network, f"JOIN {channel}")
-                network.channels[channel] = set()
+                network.channels[channel.lower()] = set()  # Normalize channel name
                 # Request user list for the channel
                 await self.send_network(network, f"NAMES {channel}")
         
@@ -1500,30 +1512,49 @@ shop_extra_magazine = 400
     async def notify_duck_detector(self, network: NetworkConnection):
         """Notify players with an active duck detector 60s before spawn, per channel."""
         now = time.time()
-        for channel in list(network.channels.keys()):
+        for channel in list(network.channel_next_spawn.keys()):
             pre = network.channel_pre_notice.get(channel)
             if pre is None:
                 continue
             if not network.channel_notice_sent.get(channel, False) and now >= pre:
                 self.log_action(f"Duck detector pre-notice triggered for {channel} on {network.name}")
-                # Notify each user in the channel with active detector
-                users_in_channel = list(network.channels.get(channel, []))
-                self.log_action(f"Users in {channel}: {users_in_channel}")
-                for user in users_in_channel:
-                    try:
-                        stats = self.get_channel_stats(user, channel, network)
-                    except Exception:
-                        continue
-                    until = stats.get('ducks_detector_until', 0)
-                    self.log_action(f"User {user} in {channel}: detector_until={until}, now={now}, active={until > now}")
-                    if until and until > now:
-                        # Compute seconds left to channel spawn
-                        nxt = network.channel_next_spawn.get(channel)
-                        seconds_left = int(nxt - now) if nxt else 60
-                        seconds_left = max(0, seconds_left)
-                        msg = f"Your duck detector indicates the next duck will arrive any minute now... ({seconds_left}s remaining)"
-                        self.log_action(f"Sending duck detector notice to {user}: {msg}")
-                        await self.send_notice(network, user, msg)
+                
+                # Query database for all users with active detector for this channel
+                if self.data_storage == 'sql' and self.db_backend:
+                    # SQL backend - query directly
+                    query = """SELECT p.username, cs.ducks_detector_until
+                               FROM players p
+                               JOIN channel_stats cs ON p.id = cs.player_id
+                               WHERE cs.network_name = %s AND cs.channel_name = %s
+                               AND cs.ducks_detector_until > %s"""
+                    users_with_detector = self.db_backend.execute_query(
+                        query, (network.name, channel, now), fetch=True
+                    ) or []
+                else:
+                    # JSON backend - iterate through players
+                    users_with_detector = []
+                    channel_key = f"{network.name}:{channel}"
+                    for username, player_data in self.players.items():
+                        stats_map = player_data.get('channel_stats', {})
+                        if channel_key in stats_map:
+                            stats = stats_map[channel_key]
+                            detector_until = stats.get('ducks_detector_until', 0)
+                            if detector_until > now:
+                                users_with_detector.append({
+                                    'username': username,
+                                    'ducks_detector_until': detector_until
+                                })
+                
+                # Send notice to each user with active detector
+                for user_data in users_with_detector:
+                    username = user_data['username']
+                    nxt = network.channel_next_spawn.get(channel)
+                    seconds_left = int(nxt - now) if nxt else 60
+                    seconds_left = max(0, seconds_left)
+                    msg = f"Your duck detector indicates the next duck will arrive any minute now... ({seconds_left}s remaining)"
+                    self.log_action(f"Sending duck detector notice to {username}: {msg}")
+                    await self.send_notice(network, username, msg)
+                
                 network.channel_notice_sent[channel] = True
     
     async def despawn_old_ducks(self, network: NetworkConnection = None):
@@ -3055,32 +3086,33 @@ shop_extra_magazine = 400
             match = re.search(r':([^!]+)![^@]+@[^ ]+ JOIN :(.+)', data)
             if match:
                 user = match.group(1)
-                channel = match.group(2)
+                channel = match.group(2).strip().lower()  # Normalize channel name
                 if channel in network.channels:
                     network.channels[channel].add(user)
                 self.log_message("JOIN", f"{user} joined {channel}")
         
-        elif data.startswith("353 "):
+        elif " 353 " in data:
             # NAMES response - list of users in channel
             # Format: :server 353 bot_nick = channel :user1 user2 user3
             parts = data.split()
             if len(parts) >= 6 and parts[3] == "=":
-                channel = parts[4]
+                channel = parts[4].strip().lower()  # Normalize channel name
                 users_list = ' '.join(parts[5:]).lstrip(':')  # Get all users from parts[5] onwards
                 # Parse users (they might have prefixes like @ or +)
                 users = users_list.split()
-                if channel in network.channels:
-                    for user in users:
-                        # Remove IRC prefixes (@ for ops, + for voiced, etc.)
-                        clean_user = user.lstrip('@+%&~')
-                        network.channels[channel].add(clean_user)
+                if channel not in network.channels:
+                    network.channels[channel] = set()  # Create if doesn't exist
+                for user in users:
+                    # Remove IRC prefixes (@ for ops, + for voiced, etc.)
+                    clean_user = user.lstrip('@+%&~')
+                    network.channels[channel].add(clean_user)
         
         elif "PART" in data:
             # User left channel
             match = re.search(r':([^!]+)![^@]+@[^ ]+ PART (.+)', data)
             if match:
                 user = match.group(1)
-                channel = match.group(2).lstrip(':')
+                channel = match.group(2).lstrip(':').strip().lower()  # Normalize channel name
                 if channel in network.channels:
                     network.channels[channel].discard(user)
                 self.log_message("PART", f"{user} left {channel}")
