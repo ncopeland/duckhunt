@@ -1494,7 +1494,7 @@ shop_extra_magazine = 400
                 spawn_delay = random.randint(min_remaining, max_remaining)
                 due_time = now + spawn_delay
         network.channel_next_spawn[channel] = due_time
-        network.channel_pre_notice[channel] = max(now, due_time - 60)
+        network.channel_pre_notice[channel] = max(now, due_time - 120)
         network.channel_notice_sent[channel] = False
         self.log_action(f"Next duck scheduled for {channel} on {network.name} at {int(due_time - now)}s from now")
 
@@ -1510,7 +1510,7 @@ shop_extra_magazine = 400
             return current_count < max_ducks
 
     async def notify_duck_detector(self, network: NetworkConnection):
-        """Notify players with an active duck detector 60s before spawn, per channel."""
+        """Notify players with an active duck detector 120s before spawn, per channel."""
         now = time.time()
         for channel in list(network.channel_next_spawn.keys()):
             pre = network.channel_pre_notice.get(channel)
@@ -1551,7 +1551,7 @@ shop_extra_magazine = 400
                     nxt = network.channel_next_spawn.get(channel)
                     seconds_left = int(nxt - now) if nxt else 60
                     seconds_left = max(0, seconds_left)
-                    msg = f"Your duck detector indicates the next duck will arrive any minute now... ({seconds_left}s remaining)"
+                    msg = f"Your duck detector indicates the next duck will arrive soon... ({seconds_left}s remaining)"
                     self.log_action(f"Sending duck detector notice to {username}: {msg}")
                     await self.send_notice(network, username, msg)
                 
