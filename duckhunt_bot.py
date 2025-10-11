@@ -2472,7 +2472,7 @@ shop_extra_magazine = 400
     
     async def handle_duckhelp(self, user, channel, network: NetworkConnection):
         """Handle !duckhelp command"""
-        help_text = "Duck Hunt Commands: !bang, !bef, !reload, !shop, !duckstats, !topduck [duck], !lastduck, !duckhelp, !ducklang"
+        help_text = "Duck Hunt Commands: !bang, !bef, !reload, !shop, !duckstats, !topduck [duck|xpratio], !lastduck, !duckhelp, !ducklang"
         await self.send_notice(network, user, help_text)
     
     async def handle_ducklang(self, user, channel, args, network: NetworkConnection):
@@ -3494,8 +3494,10 @@ shop_extra_magazine = 400
             # Get all players for this network:channel
             channel_key = f"{network.name}:{channel}"
             
-            # Check if sorting by ducks or XP
-            sort_by_ducks = args and args[0].lower() == 'duck'
+            # Check if sorting by ducks, XP, or XP ratio
+            sort_type = args[0].lower() if args else 'xp'
+            sort_by_ducks = sort_type == 'duck'
+            sort_by_xp_ratio = sort_type == 'xpratio'
             
             if self.data_storage == 'sql' and self.db_backend:
                 # SQL backend - get players from database
@@ -3503,19 +3505,44 @@ shop_extra_magazine = 400
                     order_by = "cs.ducks_shot DESC"
                     metric = "ducks_shot"
                     metric_label = "ducks"
+                    query = f"""SELECT p.username, cs.xp, cs.ducks_shot, cs.golden_ducks, cs.befriended_ducks
+                               FROM players p 
+                               JOIN channel_stats cs ON p.id = cs.player_id 
+                               WHERE cs.network_name = %s AND cs.channel_name = %s 
+                               AND p.username != %s
+                               AND (cs.xp > 0 OR cs.ducks_shot > 0)
+                               ORDER BY {order_by}
+                               LIMIT 10"""
+                elif sort_by_xp_ratio:
+                    # For XP ratio, we need to calculate it and sort by it
+                    query = """SELECT p.username, cs.xp, cs.ducks_shot, cs.golden_ducks, cs.befriended_ducks,
+                                     CASE 
+                                         WHEN (cs.ducks_shot + cs.befriended_ducks) > 0 
+                                         THEN cs.xp / (cs.ducks_shot + cs.befriended_ducks)
+                                         ELSE 0 
+                                     END as xp_ratio
+                               FROM players p 
+                               JOIN channel_stats cs ON p.id = cs.player_id 
+                               WHERE cs.network_name = %s AND cs.channel_name = %s 
+                               AND p.username != %s
+                               AND (cs.xp > 0 OR cs.ducks_shot > 0)
+                               AND (cs.ducks_shot + cs.befriended_ducks) > 0
+                               ORDER BY xp_ratio DESC
+                               LIMIT 10"""
+                    metric = "xp_ratio"
+                    metric_label = "xp ratio"
                 else:
                     order_by = "cs.xp DESC"
                     metric = "xp"
                     metric_label = "total xp"
-                
-                query = f"""SELECT p.username, cs.xp, cs.ducks_shot, cs.golden_ducks
-                           FROM players p 
-                           JOIN channel_stats cs ON p.id = cs.player_id 
-                           WHERE cs.network_name = %s AND cs.channel_name = %s 
-                           AND p.username != %s
-                           AND (cs.xp > 0 OR cs.ducks_shot > 0)
-                           ORDER BY {order_by}
-                           LIMIT 10"""
+                    query = f"""SELECT p.username, cs.xp, cs.ducks_shot, cs.golden_ducks, cs.befriended_ducks
+                               FROM players p 
+                               JOIN channel_stats cs ON p.id = cs.player_id 
+                               WHERE cs.network_name = %s AND cs.channel_name = %s 
+                               AND p.username != %s
+                               AND (cs.xp > 0 OR cs.ducks_shot > 0)
+                               ORDER BY {order_by}
+                               LIMIT 10"""
                 players = self.db_backend.execute_query(query, (network.name, channel, self.config.get('DEFAULT', 'nickname', fallback='DuckHuntBot')), fetch=True)
                 
                 if not players:
@@ -3529,9 +3556,19 @@ shop_extra_magazine = 400
                     value = player[metric]
                     ducks = player['ducks_shot']
                     golden = player['golden_ducks']
+                    befriended = player.get('befriended_ducks', 0)
                     
                     if sort_by_ducks:
                         response_parts.append(f"{username} with {ducks} ducks (incl. {golden} golden)")
+                    elif sort_by_xp_ratio:
+                        # Format XP ratio the same way as in duckstats
+                        if value >= 100:
+                            ratio_str = f"{value:.0f}"
+                        elif value >= 10:
+                            ratio_str = f"{value:.1f}"
+                        else:
+                            ratio_str = f"{value:.2f}"
+                        response_parts.append(f"{username} with {ratio_str} xp ratio")
                     else:
                         response_parts.append(f"{username} with {value} total xp")
                 
@@ -3548,17 +3585,29 @@ shop_extra_magazine = 400
                             'name': player_name,
                             'xp': stats.get('xp', 0),
                             'ducks_shot': stats.get('ducks_shot', 0),
-                            'golden_ducks': stats.get('golden_ducks', 0)
+                            'golden_ducks': stats.get('golden_ducks', 0),
+                            'befriended_ducks': stats.get('befriended_ducks', 0)
                         })
                 
                 if not players_with_stats:
                     await self.send_message(network, channel, "The scoreboard is empty. There are no top ducks.")
                     return
                 
-                # Sort by ducks or XP
+                # Sort by ducks, XP, or XP ratio
                 if sort_by_ducks:
                     players_with_stats.sort(key=lambda x: x['ducks_shot'], reverse=True)
                     metric_label = "ducks"
+                elif sort_by_xp_ratio:
+                    # Calculate XP ratio and filter out players with no actions
+                    players_with_ratio = []
+                    for player in players_with_stats:
+                        total_actions = player['ducks_shot'] + player['befriended_ducks']
+                        if total_actions > 0:
+                            player['xp_ratio'] = player['xp'] / total_actions
+                            players_with_ratio.append(player)
+                    players_with_stats = players_with_ratio
+                    players_with_stats.sort(key=lambda x: x['xp_ratio'], reverse=True)
+                    metric_label = "xp ratio"
                 else:
                     players_with_stats.sort(key=lambda x: x['xp'], reverse=True)
                     metric_label = "total xp"
@@ -3573,6 +3622,16 @@ shop_extra_magazine = 400
                     
                     if sort_by_ducks:
                         response_parts.append(f"{username} with {ducks} ducks (incl. {golden} golden)")
+                    elif sort_by_xp_ratio:
+                        # Format XP ratio the same way as in duckstats
+                        xp_ratio = player['xp_ratio']
+                        if xp_ratio >= 100:
+                            ratio_str = f"{xp_ratio:.0f}"
+                        elif xp_ratio >= 10:
+                            ratio_str = f"{xp_ratio:.1f}"
+                        else:
+                            ratio_str = f"{xp_ratio:.2f}"
+                        response_parts.append(f"{username} with {ratio_str} xp ratio")
                     else:
                         response_parts.append(f"{username} with {xp} total xp")
                 

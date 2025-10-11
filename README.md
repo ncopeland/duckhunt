@@ -1,8 +1,31 @@
-# Duck Hunt IRC Bot v1.0_build82
+# Duck Hunt IRC Bot v1.0_build85
 
 An advanced IRC bot that hosts Duck Hunt games in IRC channels with full shop system, karma tracking, multi-network support, and multilanguage capabilities. Players shoot ducks with `!bang` when they appear!
 
 ## Changelog
+
+### v1.0_build85
+- **Enhancement**: Added XP ratio feature to stats and leaderboards
+  - `!duckstats` now shows XP ratio: (total XP) / (ducks shot + befriended ducks)
+  - Smart formatting: xxx (no decimals), xx.x (1 decimal), x.xx (2 decimals)
+  - `!topduck xpratio` command to list top players by XP efficiency
+  - Helps players understand their efficiency per action
+  - Maximum theoretical XP ratio is ~50 under perfect conditions
+
+### v1.0_build84
+- **Enhancement**: Fixed timing accuracy in duck detector and !nextduck
+  - Duck detector now shows approximate minutes instead of exact seconds
+  - !nextduck shows approximate time instead of false precision
+  - Messages now say 'approximately Xm' or 'less than 1 minute'
+  - Fixes issue where exact timing was misleading due to bot processing delays
+  - Users get realistic expectations instead of false precision
+
+### v1.0_build83
+- **Enhancement**: Increased duck detector warning time from 60s to 120s
+  - Duck detector now warns 2 minutes before spawn instead of 1 minute
+  - Gives players more time to prepare and aim
+  - Updated message from 'any minute now' to 'soon' for clarity
+  - Fixes issue where late processing resulted in 1-2 second warnings
 
 ### v1.0_build82
 - **Major Fix**: Removed unnecessary channel user tracking for duck detector
