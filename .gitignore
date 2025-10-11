@@ -26,7 +26,6 @@ setup_database.py
 quick_setup.py
 create_backup_table.py
 debug_backup.py
-schema.sql
 setup_all.sh
 setup_no_sudo.sh
 SETUP_INSTRUCTIONS.txt
