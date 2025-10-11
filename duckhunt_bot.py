@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build84
+Duck Hunt IRC Bot v1.0_build85
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -3648,11 +3648,23 @@ shop_extra_magazine = 400
             total_actions = total_bad + total_good
             karma_pct = 100.0 if total_actions == 0 else max(0.0, min(100.0, (total_good / total_actions) * 100.0))
             
+            # Calculate XP ratio (XP per total action)
+            befriended_ducks = stats.get('befriended_ducks', 0)
+            total_ducks = ducks_shot + befriended_ducks
+            xp_ratio = xp / max(total_ducks, 1)  # Avoid division by zero
+            
+            # Format XP ratio to 3 digits with proper decimal places
+            if xp_ratio >= 100:
+                xp_ratio_str = f"{xp_ratio:.0f}"
+            elif xp_ratio >= 10:
+                xp_ratio_str = f"{xp_ratio:.1f}"
+            else:
+                xp_ratio_str = f"{xp_ratio:.2f}"
+            
             response = f"Hunting stats for {target_user} in {network.name}:{channel} : "
             response += f"[Weapon] ammo: {ammo}/{mag_capacity} | mag.: {magazines}/{magazines_max} "
             response += f"[Profile] {xp:.0f} xp | lvl {level} | accuracy: {accuracy:.0f}% | karma: {karma_pct:.2f}% good hunter "
-            befriended_ducks = stats.get('befriended_ducks', 0)
-            response += f"[Channel Stats] {ducks_shot} ducks (incl. {golden_ducks} golden) | {befriended_ducks} befriended | best time: {best_time:.3f}s | avg react: {avg_reaction:.3f}s"
+            response += f"[Channel Stats] {ducks_shot} ducks (incl. {golden_ducks} golden) | {befriended_ducks} befriended | ({xp:.0f} xp / ({ducks_shot} ducks + {befriended_ducks} befs))={xp_ratio_str} xp ratio | best time: {best_time:.3f}s | avg react: {avg_reaction:.3f}s"
             
             await self.send_notice(network, user, response)
             
