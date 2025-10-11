@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Duck Hunt IRC Bot v1.0_build82
+Duck Hunt IRC Bot v1.0_build84
 A comprehensive IRC bot that hosts Duck Hunt games in IRC channels.
 Based on the original Duck Hunt bot with enhanced features.
 
@@ -1549,9 +1549,13 @@ shop_extra_magazine = 400
                 for user_data in users_with_detector:
                     username = user_data['username']
                     nxt = network.channel_next_spawn.get(channel)
-                    seconds_left = int(nxt - now) if nxt else 60
+                    seconds_left = int(nxt - now) if nxt else 120
                     seconds_left = max(0, seconds_left)
-                    msg = f"Your duck detector indicates the next duck will arrive soon... ({seconds_left}s remaining)"
+                    # Show approximate time range instead of exact seconds
+                    if seconds_left > 60:
+                        msg = f"Your duck detector indicates the next duck will arrive soon... (approximately {seconds_left//60}m remaining)"
+                    else:
+                        msg = f"Your duck detector indicates the next duck will arrive soon... (less than 1m remaining)"
                     self.log_action(f"Sending duck detector notice to {username}: {msg}")
                     await self.send_notice(network, username, msg)
                 
@@ -3013,7 +3017,11 @@ shop_extra_magazine = 400
             remaining = max(0, int(next_time - now))
             minutes = remaining // 60
             seconds = remaining % 60
-            await self.send_message(network, channel, f"{user} > Next duck in {minutes}m{seconds:02d}s.")
+            # Show approximate time to avoid false precision
+            if minutes > 0:
+                await self.send_message(network, channel, f"{user} > Next duck in approximately {minutes}m.")
+            else:
+                await self.send_message(network, channel, f"{user} > Next duck in less than 1 minute.")
     
     async def process_message(self, data, network: NetworkConnection):
         """Process incoming IRC message"""
